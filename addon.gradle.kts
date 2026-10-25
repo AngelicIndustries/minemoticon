@@ -1,4 +1,3 @@
-/// START FENT PREF
 import net.darkhax.curseforgegradle.TaskPublishCurseForge
 import org.gradle.api.artifacts.dsl.RepositoryHandler
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository
@@ -10,8 +9,8 @@ import org.gradle.jvm.tasks.Jar
 import org.gradle.language.jvm.tasks.ProcessResources
 import java.util.zip.ZipFile
 
-val fentMavenName = "Fent Maven"
-val fentMavenUrl = uri("https://maven.fentanylsolutions.org/releases")
+val angelicMavenName = "Angelic Maven"
+val angelicMavenUrl = uri("https://maven.angelic.industries/releases")
 val jsvgVersion = providers.gradleProperty("jsvgVersion").orElse("2.1.0").get()
 val configuredModGroup = providers.gradleProperty("modGroup").get()
 val configuredModId = providers.gradleProperty("modId").get()
@@ -22,32 +21,31 @@ val configuredModName = providers.gradleProperty("modName").get()
 val depLoaderBootstrap = configurations.maybeCreate("deploader")
 val fatImplementation = configurations.maybeCreate("fatImplementation")
 
-fun RepositoryHandler.keepFentMavenFirst() {
-    fun currentFentRepo(): MavenArtifactRepository? = withType(MavenArtifactRepository::class.java)
-        .firstOrNull { it.url == fentMavenUrl || it.name == fentMavenName }
+fun RepositoryHandler.keepAngelicMavenFirst() {
+    fun currentAngelicRepo(): MavenArtifactRepository? = withType(MavenArtifactRepository::class.java)
+        .firstOrNull { it.url == angelicMavenUrl || it.name == angelicMavenName }
 
-    fun promoteFentRepo() {
-        val fentRepo = currentFentRepo() ?: maven {
-            name = fentMavenName
-            url = fentMavenUrl
+    fun promoteAngelicRepo() {
+        val angelicRepo = currentAngelicRepo() ?: maven {
+            name = angelicMavenName
+            url = angelicMavenUrl
         }
-        if (firstOrNull() !== fentRepo) {
-            remove(fentRepo)
-            addFirst(fentRepo)
+        if (firstOrNull() !== angelicRepo) {
+            remove(angelicRepo)
+            addFirst(angelicRepo)
         }
     }
 
-    promoteFentRepo()
+    promoteAngelicRepo()
     whenObjectAdded {
-        promoteFentRepo()
+        promoteAngelicRepo()
     }
 }
 
 gradle.allprojects {
-    repositories.keepFentMavenFirst()
-    buildscript.repositories.keepFentMavenFirst()
+    repositories.keepAngelicMavenFirst()
+    buildscript.repositories.keepAngelicMavenFirst()
 }
-/// END FENT PREF
 
 tasks.withType<JavaExec>().configureEach {
     if (name.startsWith("run")) {
@@ -75,7 +73,7 @@ tasks.register<JavaExec>("renderEmojiFontHeadless") {
         layout.buildDirectory.dir("classes/java/main"),
         layout.buildDirectory.dir("resources/main"),
         configurations.getByName("runtimeClasspath"))
-    mainClass.set("org.fentanylsolutions.minemoticon.tools.HeadlessFontRenderTool")
+    mainClass.set("industries.angelic.minemoticon.tools.HeadlessFontRenderTool")
     jvmArgs("-Djava.awt.headless=true")
 
     doFirst {
@@ -296,6 +294,20 @@ plugins.withId("maven-publish") {
         .configureEach {
             artifact(reobfJar)
             artifact(shadedDevJar)
+            pom {
+                name.set(configuredModName)
+                description.set("Emoji and custom font support for Minecraft 1.7.10.")
+                url.set("https://github.com/AngelicIndustries/minemoticon")
+                organization {
+                    name.set("Angelic Industries")
+                    url.set("https://angelic.industries/")
+                }
+                scm {
+                    url.set("https://github.com/AngelicIndustries/minemoticon")
+                    connection.set("scm:git:https://github.com/AngelicIndustries/minemoticon.git")
+                    developerConnection.set("scm:git:ssh://git@github.com/AngelicIndustries/minemoticon.git")
+                }
+            }
         }
 }
 

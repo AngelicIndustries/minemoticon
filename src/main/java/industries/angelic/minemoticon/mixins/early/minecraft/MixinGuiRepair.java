@@ -1,0 +1,192 @@
+package industries.angelic.minemoticon.mixins.early.minecraft;
+
+import net.minecraft.client.gui.GuiRepair;
+import net.minecraft.client.gui.GuiTextField;
+import net.minecraft.client.gui.inventory.GuiContainer;
+import net.minecraft.inventory.ContainerRepair;
+
+import org.lwjgl.input.Mouse;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import cpw.mods.fml.common.Loader;
+import industries.angelic.minemoticon.gui.EmojiPickerGui;
+import industries.angelic.minemoticon.gui.EmojiSuggestionHelper;
+import industries.angelic.minemoticon.network.EmoteClientHandler;
+import industries.angelic.minemoticon.text.EmojiPua;
+
+@Mixin(GuiRepair.class)
+public abstract class MixinGuiRepair extends GuiContainer {
+
+    @Unique
+    private static final int PICKER_BUTTON_SIZE = 12;
+
+    @Unique
+    private static final int PICKER_MARGIN = 4;
+
+    @Unique
+    private static final int SCREEN_MARGIN = 2;
+
+    @Unique
+    private static final int NEI_FOOTER_HEIGHT = 20;
+
+    @Shadow
+    private GuiTextField field_147091_w;
+
+    @Shadow
+    private ContainerRepair field_147092_v;
+
+    @Shadow
+    private void func_147090_g() {}
+
+    @Unique
+    private EmojiPickerGui minemoticon$picker;
+
+    @Unique
+    private EmojiSuggestionHelper minemoticon$suggestions;
+
+    private MixinGuiRepair() {
+        super(null);
+    }
+
+    @Inject(method = "initGui", at = @At("TAIL"))
+    private void minemoticon$initGui(CallbackInfo ci) {
+        int[] buttonPos = minemoticon$getPickerButtonPosition();
+        int btnX = buttonPos[0];
+        int btnY = buttonPos[1];
+        minemoticon$picker = new EmojiPickerGui(field_147091_w, fontRendererObj, width, height, btnX, btnY, false);
+        minemoticon$suggestions = new EmojiSuggestionHelper(
+            field_147091_w,
+            fontRendererObj,
+            false,
+            false,
+            width,
+            height);
+    }
+
+    @Inject(method = "drawScreen", at = @At("TAIL"))
+    private void minemoticon$drawScreen(int mouseX, int mouseY, float partialTicks, CallbackInfo ci) {
+        if (!canInput()) {
+            if (minemoticon$suggestions != null) {
+                minemoticon$suggestions.dismiss();
+            }
+            return;
+        }
+
+        if (minemoticon$suggestions != null) {
+            minemoticon$suggestions.update();
+            minemoticon$suggestions.render(mouseX, mouseY);
+        }
+
+        if (minemoticon$picker == null) return;
+
+        int dwheel = Mouse.getDWheel();
+        if (dwheel != 0 && minemoticon$picker.isOpen()) {
+            minemoticon$picker.handleScroll(mouseX, mouseY, Integer.signum(dwheel));
+        }
+
+        minemoticon$picker.render(mouseX, mouseY);
+    }
+
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
+    private void minemoticon$mouseClicked(int mouseX, int mouseY, int button, CallbackInfo ci) {
+        if (!canInput()) return;
+
+        if (minemoticon$suggestions != null && minemoticon$suggestions.mouseClicked(mouseX, mouseY, button)) {
+            field_147091_w.setFocused(true);
+            minemoticon$syncSuggestionInsert();
+            ci.cancel();
+            return;
+        }
+
+        if (minemoticon$picker == null) return;
+
+        String insertText = minemoticon$picker.mouseClicked(mouseX, mouseY, button);
+        if (insertText != null) {
+            field_147091_w.setFocused(true);
+            field_147091_w.writeText(insertText);
+            minemoticon$registerInsertedPua(insertText);
+            func_147090_g();
+            ci.cancel();
+            return;
+        }
+
+        if (minemoticon$picker.isInsidePanel(mouseX, mouseY)) {
+            ci.cancel();
+        } else if (minemoticon$picker.isOpen()) {
+            minemoticon$picker.toggle();
+        }
+    }
+
+    @Inject(method = "keyTyped", at = @At("HEAD"), cancellable = true)
+    private void minemoticon$keyTyped(char c, int keyCode, CallbackInfo ci) {
+        if (minemoticon$suggestions != null && canInput()
+            && minemoticon$suggestions.isActive()
+            && minemoticon$suggestions.keyTyped(c, keyCode)) {
+            field_147091_w.setFocused(true);
+            minemoticon$syncSuggestionInsert();
+            ci.cancel();
+            return;
+        }
+
+        if (minemoticon$picker != null && canInput() && minemoticon$picker.keyTyped(c, keyCode)) {
+            String text = minemoticon$picker.consumeInsertText();
+            if (text != null) {
+                field_147091_w.setFocused(true);
+                field_147091_w.writeText(text);
+                minemoticon$registerInsertedPua(text);
+                func_147090_g();
+            }
+            ci.cancel();
+        }
+    }
+
+    @Unique
+    private void minemoticon$syncSuggestionInsert() {
+        String text = minemoticon$suggestions.consumeInsertText();
+        if (text == null) {
+            return;
+        }
+        minemoticon$registerInsertedPua(text);
+        func_147090_g();
+    }
+
+    @Unique
+    private boolean canInput() {
+        return field_147092_v.getSlot(0)
+            .getHasStack();
+    }
+
+    @Unique
+    private void minemoticon$registerInsertedPua(String text) {
+        if (EmojiPua.isPuaToken(text)) {
+            EmoteClientHandler.onPuaObserved(text);
+        }
+    }
+
+    @Unique
+    private int[] minemoticon$getPickerButtonPosition() {
+        int x = guiLeft + xSize - PICKER_BUTTON_SIZE - PICKER_MARGIN;
+        int y = guiTop + ySize + PICKER_MARGIN;
+        return minemoticon$clampToScreen(x, y);
+    }
+
+    @Unique
+    private int[] minemoticon$clampToScreen(int x, int y) {
+        int maxY = height - PICKER_BUTTON_SIZE - SCREEN_MARGIN;
+        if (Loader.isModLoaded("NotEnoughItems")) {
+            maxY -= NEI_FOOTER_HEIGHT + PICKER_MARGIN;
+        }
+        return new int[] { minemoticon$clamp(x, SCREEN_MARGIN, width - PICKER_BUTTON_SIZE - SCREEN_MARGIN),
+            minemoticon$clamp(y, SCREEN_MARGIN, maxY) };
+    }
+
+    @Unique
+    private int minemoticon$clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+}

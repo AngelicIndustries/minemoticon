@@ -6,7 +6,7 @@
 		"description": "Emoji and custom font support for Minecraft 1.7.10, using the FreeType library.",
 		"version": "${modVersion}",
 		"mcversion": "${minecraftVersion}",
-		"url": "https://github.com/JackOfNoneTrades/minemoticon",
+		"url": "https://github.com/AngelicIndustries/minemoticon",
 		"updateUrl": "",
 		"authorList": ["jack"],
 		"credits": "",

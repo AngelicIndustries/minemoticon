@@ -5,10 +5,10 @@
 Emoji and font support for `1.7.10 Minecraft`. Custom packs, server packs, animated custom emojis, picker, autocomplete, multiplayer sharing, and emoji fonts.
 This mod bundles the [FreeType](https://freetype.org/) library for font rendering. The default emoji font uses [Twemoji](https://github.com/twitter/twemoji).
 
-[![hub](images/badges/github.png)](https://github.com/JackOfNoneTrades/minemoticon/releases)
+[![hub](images/badges/github.png)](https://github.com/AngelicIndustries/minemoticon/releases)
 [![curse](images/badges/curse.png)](https://www.curseforge.com/minecraft/mc-mods/minemoticon)
-[![67](images/badges/67.png)](https://67.fentanylsolutions.org/mod/minemoticon)
-[![maven](images/badges/maven.png)](https://maven.fentanylsolutions.org/#/releases/org/fentanylsolutions/minemoticon)
+[![67](images/badges/67.png)](https://67minecraft.com/mod/minemoticon)
+[![maven](images/badges/maven.png)](https://maven.angelic.industries/#/releases/industries/angelic/minemoticon/minemoticon)
 ![forge](images/badges/forge.png)
 [![cord](images/badges/cord.png)](https://discord.gg/xAWCqGrguG)
 
@@ -37,7 +37,9 @@ This mod bundles the [FreeType](https://freetype.org/) library for font renderin
 
 * [UniMixins](https://modrinth.com/mod/unimixins) [![curse](images/icons/curse.png)](https://www.curseforge.com/minecraft/mc-mods/unimixins)  [![modrinth](images/icons/modrinth.png)](https://modrinth.com/mod/unimixins/versions) [![git](images/icons/git.png)](https://github.com/LegacyModdingMC/UniMixins/releases)
 * [GTNHLib](https://modrinth.com/mod/gtnhlib)   [![curse](images/icons/curse.png)](https://www.curseforge.com/minecraft/mc-mods/gtnhlib)  [![modrinth](images/icons/modrinth.png)](https://modrinth.com/mod/gtnhlib) [![git](images/icons/git.png)](https://github.com/GTNewHorizons/GTNHLib/releases)
-* [FentLib](https://www.curseforge.com/minecraft/mc-mods/fentlib) [![curse](images/icons/curse.png)](https://www.curseforge.com/minecraft/mc-mods/fentlib) [![modrinth](images/icons/modrinth.png)](https://modrinth.com/mod/fentlib) [![67](images/icons/67.png)](https://67.fentanylsolutions.org/mod/fentlib) [![git](images/icons/git.png)](https://github.com/JackOfNoneTrades/FentLib)
+* [AngelLib](https://www.curseforge.com/minecraft/mc-mods/angellib) [![curse](images/icons/curse.png)](https://www.curseforge.com/minecraft/mc-mods/angellib) [![modrinth](images/icons/modrinth.png)](https://modrinth.com/mod/angellib) [![67](images/icons/67.png)](https://67minecraft.com/mod/angellib) [![git](images/icons/git.png)](https://github.com/AngelicIndustries/AngelLib)
+
+Install AngelLib 1.0.0 or newer alongside Minemoticon, including when using the bundled JAR.
 
 ## Building
 

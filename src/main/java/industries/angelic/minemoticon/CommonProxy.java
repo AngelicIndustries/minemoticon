@@ -1,0 +1,68 @@
+package industries.angelic.minemoticon;
+
+import net.minecraft.entity.player.EntityPlayerMP;
+
+import cpw.mods.fml.common.FMLCommonHandler;
+import cpw.mods.fml.common.event.FMLInitializationEvent;
+import cpw.mods.fml.common.event.FMLPostInitializationEvent;
+import cpw.mods.fml.common.event.FMLPreInitializationEvent;
+import cpw.mods.fml.common.event.FMLServerStartingEvent;
+import cpw.mods.fml.common.eventhandler.SubscribeEvent;
+import cpw.mods.fml.common.gameevent.PlayerEvent;
+import cpw.mods.fml.common.gameevent.TickEvent;
+import industries.angelic.minemoticon.command.CommandClearEmojis;
+import industries.angelic.minemoticon.command.CommandReloadEmojis;
+import industries.angelic.minemoticon.command.CommandSendOneOff;
+import industries.angelic.minemoticon.network.EmoteServerHandler;
+import industries.angelic.minemoticon.network.NetworkHandler;
+import industries.angelic.minemoticon.network.PacketServerPresence;
+
+public class CommonProxy {
+
+    public void preInit(FMLPreInitializationEvent event) {
+        Minemoticon.LOG.info("Minemoticon v{}", Tags.VERSION);
+    }
+
+    public void init(FMLInitializationEvent event) {
+        NetworkHandler.init();
+        FMLCommonHandler.instance()
+            .bus()
+            .register(this);
+    }
+
+    public void postInit(FMLPostInitializationEvent event) {}
+
+    public void serverStarting(FMLServerStartingEvent event) {
+        event.registerServerCommand(new CommandReloadEmojis());
+        event.registerServerCommand(new CommandClearEmojis());
+        event.registerServerCommand(new CommandSendOneOff());
+        EmoteServerHandler.bootstrapPersistentStore();
+        EmoteServerHandler.loadServerPacks();
+    }
+
+    @SubscribeEvent
+    public void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.player instanceof EntityPlayerMP player) {
+            Minemoticon.debug("Sending presence packet to {}", player.getCommandSenderName());
+            NetworkHandler.INSTANCE.sendTo(new PacketServerPresence(), player);
+            EmoteServerHandler.sendServerPacksToPlayer(player);
+            EmoteServerHandler.sendOneOffsToPlayer(player);
+            EmoteServerHandler.sendPersistentAliasesToPlayer(player);
+            EmoteServerHandler.sendPuaLeasesToPlayer(player);
+        }
+    }
+
+    @SubscribeEvent
+    public void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.player instanceof EntityPlayerMP player) {
+            EmoteServerHandler.onPlayerDisconnect(player);
+        }
+    }
+
+    @SubscribeEvent
+    public void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) {
+            EmoteServerHandler.tick();
+        }
+    }
+}
