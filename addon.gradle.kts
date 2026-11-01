@@ -402,5 +402,8 @@ afterEvaluate {
 }
 
 tasks.matching { it.name == "publish67Minecraft" }.configureEach {
-    dependsOn(fatJar, fatDevJar, reobfJar)
+    // CI passes the already built release assets via 67minecraftFile
+    if (!providers.gradleProperty("67minecraftFile").isPresent) {
+        dependsOn(fatJar, fatDevJar, reobfJar)
+    }
 }
