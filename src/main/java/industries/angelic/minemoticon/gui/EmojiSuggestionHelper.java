@@ -15,6 +15,7 @@ import industries.angelic.minemoticon.api.RenderableEmoji;
 import industries.angelic.minemoticon.mixins.early.minecraft.AccessorGuiTextField;
 import industries.angelic.minemoticon.network.EmoteClientHandler;
 import industries.angelic.minemoticon.render.EmojiRenderer;
+import industries.angelic.minemoticon.text.TextStyleCompat;
 
 public class EmojiSuggestionHelper {
 
@@ -279,12 +280,12 @@ public class EmojiSuggestionHelper {
             EmojiRenderer.bypass = false;
         }
 
-        // Draw ghost text after the cursor
-        if (selectedIndex < suggestions.size()) {
+        // Draw ghost text after the cursor, unless it would overlap text there
+        String text = input.getText();
+        int cursor = Math.max(0, Math.min(input.getCursorPosition(), text.length()));
+        if (selectedIndex < suggestions.size() && drawsNothingAfter(text, cursor)) {
             String full = suggestions.get(selectedIndex)
                 .getShorterString();
-            String text = input.getText();
-            int cursor = Math.max(0, Math.min(input.getCursorPosition(), text.length()));
             String typed = ":" + text.substring(colonStart + 1, cursor);
             if (full.toLowerCase()
                 .startsWith(typed.toLowerCase())) {
@@ -297,6 +298,16 @@ public class EmojiSuggestionHelper {
                 }
             }
         }
+    }
+
+    // Only format codes, if anything, follow index
+    private static boolean drawsNothingAfter(String text, int index) {
+        while (index < text.length()) {
+            int tokenEnd = TextStyleCompat.inputTokenEnd(text, index);
+            if (tokenEnd <= index) return false;
+            index = tokenEnd;
+        }
+        return true;
     }
 
     public boolean mouseClicked(int mouseX, int mouseY, int button) {
