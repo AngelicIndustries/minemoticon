@@ -5,14 +5,17 @@ import java.io.File;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.util.ScreenShotHelper;
+import net.minecraftforge.client.ClientCommandHandler;
 
 import com.gtnewhorizon.gtnhlib.config.ConfigException;
 
 import cpw.mods.fml.common.FMLCommonHandler;
+import cpw.mods.fml.common.Loader;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import cpw.mods.fml.common.network.FMLNetworkEvent;
+import industries.angelic.minemoticon.command.CommandEmojiAngelicaTest;
 import industries.angelic.minemoticon.config.FontSelectionScreen;
 import industries.angelic.minemoticon.config.MinemoticonGuiConfig;
 import industries.angelic.minemoticon.font.GlyphCache;
@@ -35,6 +38,9 @@ public class ClientProxy extends CommonProxy {
     public void init(FMLInitializationEvent event) {
         super.init(event);
         ClientEmojiHandler.setup();
+        if (Minemoticon.isDebugMode() && Loader.isModLoaded("angelica")) {
+            ClientCommandHandler.instance.registerCommand(new CommandEmojiAngelicaTest());
+        }
         FMLCommonHandler.instance()
             .bus()
             .register(this);

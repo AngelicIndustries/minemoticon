@@ -6,6 +6,7 @@ import net.minecraft.client.gui.GuiScreen;
 import com.gtnewhorizon.gtnhlib.config.ConfigException;
 import com.gtnewhorizon.gtnhlib.config.SimpleGuiConfig;
 
+import industries.angelic.minemoticon.DebugConfig;
 import industries.angelic.minemoticon.EmojiConfig;
 import industries.angelic.minemoticon.Minemoticon;
 import industries.angelic.minemoticon.ServerConfig;
@@ -17,7 +18,14 @@ public class MinemoticonGuiConfig extends SimpleGuiConfig {
     private static final int BTN_MANAGE_PACKS = 9994;
 
     public MinemoticonGuiConfig(GuiScreen parent) throws ConfigException {
-        super(parent, Minemoticon.MODID, Minemoticon.MODID, true, EmojiConfig.class, ServerConfig.class);
+        super(
+            parent,
+            Minemoticon.MODID,
+            Minemoticon.MODID,
+            true,
+            EmojiConfig.class,
+            ServerConfig.class,
+            DebugConfig.class);
     }
 
     @Override

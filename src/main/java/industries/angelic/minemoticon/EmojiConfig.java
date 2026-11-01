@@ -44,10 +44,6 @@ public class EmojiConfig {
     @Config.RangeInt(min = 8, max = 16)
     public static int fontStackTextDisplayHeight;
 
-    @Config.Comment("Enable debug logging")
-    @Config.DefaultBoolean(false)
-    public static boolean debugMode;
-
     public static float getFontStackTextDisplayHeight() {
         return Math.max(8.0f, Math.min(16.0f, (float) fontStackTextDisplayHeight));
     }

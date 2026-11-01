@@ -9,6 +9,7 @@ import com.gtnewhorizon.gtnhlib.config.ConfigurationManager;
 
 import cpw.mods.fml.relauncher.IFMLLoadingPlugin;
 import industries.angelic.angellib.core.AngelEarlyMixinLoader;
+import industries.angelic.minemoticon.DebugConfig;
 import industries.angelic.minemoticon.EmojiConfig;
 import industries.angelic.minemoticon.Minemoticon;
 import industries.angelic.minemoticon.ServerConfig;
@@ -26,6 +27,7 @@ public class EarlyMixinLoader extends AngelEarlyMixinLoader {
         try {
             ConfigurationManager.registerConfig(EmojiConfig.class);
             ConfigurationManager.registerConfig(ServerConfig.class);
+            ConfigurationManager.registerConfig(DebugConfig.class);
         } catch (ConfigException e) {
             throw new RuntimeException(e);
         }

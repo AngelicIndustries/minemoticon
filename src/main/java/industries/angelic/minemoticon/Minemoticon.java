@@ -44,7 +44,7 @@ public class Minemoticon {
     public static CommonProxy proxy;
 
     public static boolean isDebugMode() {
-        return DEBUG_MODE || EmojiConfig.debugMode;
+        return DEBUG_MODE || DebugConfig.debugMode;
     }
 
     // <game dir>/config/minemoticon. The working directory isn't always the game dir, and
