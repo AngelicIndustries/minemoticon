@@ -128,6 +128,14 @@ public class EmojiRenderer {
         return matchAtInternal(text, index);
     }
 
+    // Backslash-escaped emoji at index, drawn as its literal text. Same rules as parse().
+    public static EscapeMatch matchEscapeAt(String text, int index) {
+        if (bypass || text == null) {
+            return null;
+        }
+        return matchEscapedEmoji(text, index);
+    }
+
     private static EmojiMatch matchAtInternal(String text, int index) {
         if (text == null || index < 0 || index >= text.length()) {
             return null;
@@ -485,7 +493,7 @@ public class EmojiRenderer {
         }
     }
 
-    private static final class EscapeMatch {
+    public static final class EscapeMatch {
 
         private final String literalText;
         private final int nextIndex;
@@ -493,6 +501,14 @@ public class EmojiRenderer {
         private EscapeMatch(String literalText, int nextIndex) {
             this.literalText = literalText;
             this.nextIndex = nextIndex;
+        }
+
+        public String getLiteralText() {
+            return literalText;
+        }
+
+        public int getNextIndex() {
+            return nextIndex;
         }
     }
 

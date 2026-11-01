@@ -259,7 +259,7 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
             this.minemoticon$styleTimeNanos = System.nanoTime();
             minemoticon$resetExtendedStyles();
             minemoticon$applyRenderColor(this.minemoticon$currentRenderColor);
-            minemoticon$renderTextSegment(text, shadow);
+            minemoticon$renderTextSegment(text, shadow, true);
         } finally {
             minemoticon$rendering = false;
         }
@@ -268,7 +268,7 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
     // For each codepoint: resolve via font stack. First font with the glyph wins.
     // MinecraftFontSource or null -> batch to vanilla. Anything else -> textured quad.
     @Unique
-    private void minemoticon$renderTextSegment(String text, boolean shadow) {
+    private void minemoticon$renderTextSegment(String text, boolean shadow, boolean matchEmoji) {
         FontStack stack = ClientEmojiHandler.getFontStack();
 
         var vanillaBuf = new StringBuilder();
@@ -294,7 +294,24 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
                 continue;
             }
 
-            EmojiRenderer.EmojiMatch emoji = EmojiRenderer.matchAt(text, i);
+            // Width is measured through EmojiRenderer.parse(), which drops the escaping backslash
+            EmojiRenderer.EscapeMatch escaped = matchEmoji ? EmojiRenderer.matchEscapeAt(text, i) : null;
+            if (escaped != null) {
+                if (vanillaBuf.length() > 0) {
+                    minemoticon$flushVanillaText(vanillaBuf, shadow, vanillaRunStyle);
+                    vanillaRunStyle = null;
+                }
+                if (customRunBuf.length() > 0) {
+                    minemoticon$flushCustomTextRun(customRunBuf, customRunSource, shadow, customRunStyle);
+                    customRunSource = null;
+                    customRunStyle = null;
+                }
+                minemoticon$renderTextSegment(escaped.getLiteralText(), shadow, false);
+                i = escaped.getNextIndex();
+                continue;
+            }
+
+            EmojiRenderer.EmojiMatch emoji = matchEmoji ? EmojiRenderer.matchAt(text, i) : null;
             if (emoji != null) {
                 if (vanillaBuf.length() > 0) {
                     minemoticon$flushVanillaText(vanillaBuf, shadow, vanillaRunStyle);

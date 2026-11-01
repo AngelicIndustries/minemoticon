@@ -8,6 +8,7 @@ import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.ChatStyle;
 import net.minecraft.util.IChatComponent;
 
+import industries.angelic.minemoticon.ClientEmojiHandler;
 import industries.angelic.minemoticon.api.Emoji;
 import industries.angelic.minemoticon.api.EmojiFromPack;
 import industries.angelic.minemoticon.api.EmojiFromRemote;
@@ -122,15 +123,24 @@ public final class ChatEmojiTooltipHelper {
         if (!puaTooltip.isEmpty()) {
             return puaTooltip;
         }
-        if (EmojiPua.isPuaToken(segment.getText())) {
+        // One-off sender names arrive later and refresh chat
+        if (EmojiPua.isReservedOneOffToken(segment.getText())) {
             return "";
         }
         if (emoji instanceof EmojiFromPack packEmoji) {
-            return "\\" + packEmoji.getNamespaced();
+            return literalShortcode(packEmoji.getNamespaced());
         }
         if (emoji instanceof Emoji minemoticonEmoji) {
-            return "\\" + minemoticonEmoji.getShorterString();
+            return literalShortcode(minemoticonEmoji.getShorterString());
+        }
+        if (EmojiPua.isPuaToken(segment.getText())) {
+            return "";
         }
         return "emoji";
+    }
+
+    // Escaped only when the shortcode would otherwise render as the emoji itself
+    private static String literalShortcode(String shortcode) {
+        return ClientEmojiHandler.EMOJI_LOOKUP.get(shortcode) instanceof RenderableEmoji ? "\\" + shortcode : shortcode;
     }
 }
