@@ -8,7 +8,7 @@ Usage: native/sync-freetype.sh [--verify|--sync]
 Initialize the FreeType submodule and optionally pin it to the configured tag.
 
 Environment overrides:
-  FREETYPE_VERSION  FreeType version number (default: 2.14.3)
+  FREETYPE_VERSION  FreeType version number (default: 2.15.0)
   FREETYPE_TAG      Exact git tag to check out (default: derived from FREETYPE_VERSION)
 EOF
 }
@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SUBMODULE_REL="native/freetype"
 SUBMODULE_DIR="${FREETYPE_DIR:-$ROOT_DIR/$SUBMODULE_REL}"
-FREETYPE_VERSION="${FREETYPE_VERSION:-2.14.3}"
+FREETYPE_VERSION="${FREETYPE_VERSION:-2.15.0}"
 FREETYPE_TAG="${FREETYPE_TAG:-VER-${FREETYPE_VERSION//./-}}"
 
 ensure_tools() {

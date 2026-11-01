@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 
 ZIG_VERSION ?= 0.13.0
-FREETYPE_VERSION ?= 2.14.3
+FREETYPE_VERSION ?= 2.15.0
 
 .PHONY: all clean install sync-freetype verify-freetype zig-host zig-all setup-zig
 

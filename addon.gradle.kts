@@ -97,7 +97,7 @@ extensions.getByType(org.gradle.api.tasks.SourceSetContainer::class.java)
     }
 
 val configuredFreetypeVersion = providers.provider {
-    (findProperty("freetypeVersion") as String?) ?: "2.14.3"
+    (findProperty("freetypeVersion") as String?) ?: "2.15.0"
 }
 val configuredFreetypeTag = configuredFreetypeVersion.map { version ->
     "VER-" + version.replace('.', '-')
