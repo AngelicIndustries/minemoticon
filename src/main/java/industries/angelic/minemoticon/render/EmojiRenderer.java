@@ -523,6 +523,10 @@ public class EmojiRenderer {
         }
     }
 
+    static boolean isUnresolvedPlaceholder(RenderableEmoji emoji) {
+        return emoji == UNRESOLVED_PUA_PLACEHOLDER;
+    }
+
     public static void renderQuad(RenderableEmoji emoji, float x, float y) {
         if (emoji == UNRESOLVED_PUA_PLACEHOLDER) {
             renderUnresolvedPlaceholder(x, y);

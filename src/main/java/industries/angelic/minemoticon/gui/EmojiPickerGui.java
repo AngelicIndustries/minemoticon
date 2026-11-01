@@ -19,6 +19,7 @@ import industries.angelic.minemoticon.EmojiConfig;
 import industries.angelic.minemoticon.api.Emoji;
 import industries.angelic.minemoticon.api.RenderableEmoji;
 import industries.angelic.minemoticon.network.EmoteClientHandler;
+import industries.angelic.minemoticon.render.EmojiQuadBatch;
 import industries.angelic.minemoticon.render.EmojiRenderer;
 
 public class EmojiPickerGui {
@@ -41,6 +42,7 @@ public class EmojiPickerGui {
     private final GuiTextField searchField;
     private final int screenHeight;
     private final boolean configButtonEnabled;
+    private final EmojiQuadBatch gridEmojis = new EmojiQuadBatch();
 
     private boolean open;
     private RenderableEmoji buttonEmoji;
@@ -383,13 +385,15 @@ public class EmojiPickerGui {
                     }
 
                     if (emojis[col] instanceof RenderableEmoji t) {
-                        EmojiRenderer.renderQuad(t, x + 1, cellTop + 2);
+                        gridEmojis.add(t, x + 1, cellTop + 2);
                     }
                 }
                 GL11.glColor4f(1, 1, 1, 1);
             }
         }
 
+        // Highlights are drawn under the emojis, so they can all go in one batch
+        gridEmojis.draw();
         GL11.glDisable(GL11.GL_SCISSOR_TEST);
     }
 

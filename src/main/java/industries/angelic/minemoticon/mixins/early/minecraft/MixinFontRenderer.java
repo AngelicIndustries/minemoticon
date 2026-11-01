@@ -24,6 +24,7 @@ import industries.angelic.minemoticon.font.FontStack;
 import industries.angelic.minemoticon.font.GlyphCache;
 import industries.angelic.minemoticon.font.MinecraftFontSource;
 import industries.angelic.minemoticon.font.TextRunLayout;
+import industries.angelic.minemoticon.render.EmojiQuadBatch;
 import industries.angelic.minemoticon.render.EmojiRenderer;
 import industries.angelic.minemoticon.render.FontRendererEmojiCompat;
 import industries.angelic.minemoticon.text.TextStyleCompat;
@@ -126,6 +127,10 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
 
     @Unique
     private boolean minemoticon$rendering = false;
+
+    // Emojis of the string being rendered, drawn grouped by texture once the string is done
+    @Unique
+    private final EmojiQuadBatch minemoticon$emojiBatch = new EmojiQuadBatch();
 
     @Unique
     private boolean minemoticon$measuringWidth = false;
@@ -260,7 +265,12 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
             minemoticon$resetExtendedStyles();
             minemoticon$applyRenderColor(this.minemoticon$currentRenderColor);
             minemoticon$renderTextSegment(text, shadow, true);
+            if (!minemoticon$emojiBatch.isEmpty()) {
+                minemoticon$emojiBatch.draw();
+                minemoticon$applyRenderColor(this.minemoticon$currentRenderColor);
+            }
         } finally {
+            minemoticon$emojiBatch.discard();
             minemoticon$rendering = false;
         }
     }
@@ -1027,9 +1037,8 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
         MinemoticonRunStyle style = minemoticon$captureRunStyle();
         float yOffset = style.wave ? minemoticon$waveOffset(style.visibleStart) : 0.0f;
         if (!shadow) {
-            EmojiRenderer
-                .renderQuad(emoji.getEmoji(), this.posX, this.posY + minemoticon$INLINE_EMOJI_Y_OFFSET + yOffset);
-            minemoticon$applyRenderColor(this.minemoticon$currentRenderColor);
+            minemoticon$emojiBatch
+                .add(emoji.getEmoji(), this.posX, this.posY + minemoticon$INLINE_EMOJI_Y_OFFSET + yOffset);
         }
         this.posX += EmojiRenderer.EMOJI_SIZE;
         minemoticon$advanceVisibleStyle();
