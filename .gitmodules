@@ -1,3 +1,12 @@
-[submodule "native/freetype"]
-	path = native/freetype
-	url = https://gitlab.freedesktop.org/freetype/freetype.git
+[submodule "native/harfbuzz"]
+	path = native/harfbuzz
+	url = https://github.com/harfbuzz/harfbuzz.git
+	shallow = true
+[submodule "native/libpng"]
+	path = native/libpng
+	url = https://github.com/pnggroup/libpng.git
+	shallow = true
+[submodule "native/zlib"]
+	path = native/zlib
+	url = https://github.com/madler/zlib.git
+	shallow = true

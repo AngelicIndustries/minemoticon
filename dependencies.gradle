@@ -50,7 +50,6 @@ configurations {
     testRuntimeOnly.extendsFrom(fatImplementation)
 }
 
-ext.freetypeVersion = (findProperty("freetypeVersion") ?: "2.15.0").toString()
 ext.zigVersion = (findProperty("zigVersion") ?: "0.13.0").toString()
 ext.jsvgVersion = (findProperty("jsvgVersion") ?: "2.1.0").toString()
 ext.fplibDepLoaderVersion = (findProperty("fplibDepLoaderVersion") ?: "1.12.2").toString()

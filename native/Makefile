@@ -1,26 +1,25 @@
 #!/usr/bin/make -f
 
 ZIG_VERSION ?= 0.13.0
-FREETYPE_VERSION ?= 2.15.0
 
-.PHONY: all clean install sync-freetype verify-freetype zig-host zig-all setup-zig
+.PHONY: all clean install sync-natives verify-natives zig-host zig-all setup-zig
 
 all: zig-host
 
 setup-zig:
 	ZIG_VERSION=$(ZIG_VERSION) ./build-zig.sh --setup-only
 
-sync-freetype:
-	FREETYPE_VERSION=$(FREETYPE_VERSION) ./sync-freetype.sh --sync
+sync-natives:
+	./sync-natives.sh --sync
 
-verify-freetype:
-	FREETYPE_VERSION=$(FREETYPE_VERSION) ./sync-freetype.sh --verify
+verify-natives:
+	./sync-natives.sh --verify
 
-zig-host: verify-freetype
-	ZIG_VERSION=$(ZIG_VERSION) FREETYPE_VERSION=$(FREETYPE_VERSION) ./build-zig.sh host
+zig-host: verify-natives
+	ZIG_VERSION=$(ZIG_VERSION) ./build-zig.sh host
 
-zig-all: verify-freetype
-	ZIG_VERSION=$(ZIG_VERSION) FREETYPE_VERSION=$(FREETYPE_VERSION) ./build-zig.sh all
+zig-all: verify-natives
+	ZIG_VERSION=$(ZIG_VERSION) ./build-zig.sh all
 
 install: zig-host
 

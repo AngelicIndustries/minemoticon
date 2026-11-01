@@ -5,7 +5,8 @@ usage() {
     cat <<'EOF'
 Usage: native/build-zig.sh [--setup-only] [all|host|platform[,platform...]]
 
-Build bundled FreeType JNI natives with a project-local Zig toolchain.
+Build the bundled HarfBuzz JNI natives (HarfBuzz with its raster library, libpng and zlib)
+with a project-local Zig toolchain.
 
 Supported platforms:
   macos-arm64, macos-x64, linux-arm64, linux-x64, windows-arm64, windows-x64
@@ -13,8 +14,6 @@ Supported platforms:
 Environment overrides:
   ZIG_VERSION     Tagged Zig version to bootstrap locally (default: 0.13.0)
   JAVA_HOME       JDK to use for generating JNI headers
-  FREETYPE_DIR    FreeType source checkout (default: native/freetype)
-  FREETYPE_TAG    Exact FreeType git tag expected in FREETYPE_DIR
 EOF
 }
 
@@ -22,11 +21,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 NATIVE_DIR="$ROOT_DIR/native"
 BUILD_ROOT="$NATIVE_DIR/build/zig"
-RESOURCES_DIR="${NATIVE_RESOURCE_DIR:-$ROOT_DIR/build/generated/freetype-resources/natives}"
+RESOURCES_DIR="${NATIVE_RESOURCE_DIR:-$ROOT_DIR/build/generated/native-resources/natives}"
 TOOLCHAIN_ROOT="$NATIVE_DIR/toolchains/zig"
-FREETYPE_VERSION="${FREETYPE_VERSION:-2.15.0}"
-FREETYPE_TAG="${FREETYPE_TAG:-VER-${FREETYPE_VERSION//./-}}"
-FREETYPE_DIR="${FREETYPE_DIR:-$NATIVE_DIR/freetype}"
 ZIG_VERSION="${ZIG_VERSION:-0.13.0}"
 SUPPORTED_PLATFORMS=(
     macos-arm64
@@ -93,36 +89,6 @@ ensure_tools() {
     if [[ "${#missing[@]}" -gt 0 ]]; then
         echo "Missing required tools: ${missing[*]}" >&2
         exit 1
-    fi
-}
-
-ensure_freetype_source() {
-    if [[ ! -f "$FREETYPE_DIR/include/freetype/freetype.h" ]]; then
-        echo "Missing FreeType source under $FREETYPE_DIR." >&2
-        echo "Run ./gradlew syncFreetypeSubmodule${FREETYPE_VERSION:+ -PfreetypeVersion=$FREETYPE_VERSION} to initialize it." >&2
-        exit 1
-    fi
-
-    if git -C "$FREETYPE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        local expected actual exact_tag
-        expected="$(git -C "$FREETYPE_DIR" rev-parse -q --verify "refs/tags/$FREETYPE_TAG^{commit}" 2>/dev/null || true)"
-        if [[ -z "$expected" ]]; then
-            echo "FreeType tag $FREETYPE_TAG is not available locally; fetching tags." >&2
-            git -C "$FREETYPE_DIR" fetch --force origin "refs/tags/$FREETYPE_TAG:refs/tags/$FREETYPE_TAG"
-            expected="$(git -C "$FREETYPE_DIR" rev-parse -q --verify "refs/tags/$FREETYPE_TAG^{commit}" 2>/dev/null || true)"
-        fi
-        if [[ -z "$expected" ]]; then
-            echo "FreeType tag $FREETYPE_TAG could not be resolved." >&2
-            exit 1
-        fi
-
-        actual="$(git -C "$FREETYPE_DIR" rev-parse HEAD)"
-        if [[ "$actual" != "$expected" ]]; then
-            exact_tag="$(git -C "$FREETYPE_DIR" describe --tags --exact-match HEAD 2>/dev/null || true)"
-            echo "FreeType checkout is at ${exact_tag:-$(git -C "$FREETYPE_DIR" rev-parse --short HEAD)}, expected $FREETYPE_TAG." >&2
-            echo "Run ./gradlew syncFreetypeSubmodule${FREETYPE_VERSION:+ -PfreetypeVersion=$FREETYPE_VERSION} to repin it." >&2
-            exit 1
-        fi
     fi
 }
 
@@ -294,13 +260,13 @@ platform_jni_dir() {
 platform_lib_name() {
     case "$1" in
         macos-*)
-            printf '%s\n' "libfreetype-jni.dylib"
+            printf '%s\n' "libharfbuzz-jni.dylib"
             ;;
         linux-*)
-            printf '%s\n' "libfreetype-jni.so"
+            printf '%s\n' "libharfbuzz-jni.so"
             ;;
         windows-*)
-            printf '%s\n' "freetype-jni.dll"
+            printf '%s\n' "harfbuzz-jni.dll"
             ;;
         *)
             echo "Unsupported platform '$1'" >&2
@@ -341,7 +307,7 @@ prepare_java_bindings() {
     javac_bin="$JAVA_HOME_RESOLVED/bin/javac"
     classes_dir="$BUILD_ROOT/java/classes"
     headers_dir="$BUILD_ROOT/java/headers"
-    java_sources=("$NATIVE_DIR"/freetype-jni/freetype-jni/*.java)
+    java_sources=("$ROOT_DIR/src/main/java/industries/angelic/minemoticon/harfbuzz/HarfBuzz.java")
 
     rm -rf "$classes_dir" "$headers_dir"
     mkdir -p "$classes_dir" "$headers_dir"
@@ -365,13 +331,15 @@ build_platform() {
     mkdir -p "$build_dir" "$install_dir" "$target_resource_dir"
 
     "$ZIG_BIN" build \
-        --build-file "$NATIVE_DIR/freetype-jni/build.zig" \
+        --build-file "$NATIVE_DIR/harfbuzz-jni/build.zig" \
         --cache-dir "$build_dir/.zig-cache" \
         --global-cache-dir "$BUILD_ROOT/.zig-global-cache" \
         --prefix "$install_dir" \
         -Dtarget="$zig_target" \
         -Doptimize=ReleaseFast \
-        -Dfreetype-src="$FREETYPE_DIR" \
+        -Dharfbuzz-src="$NATIVE_DIR/harfbuzz" \
+        -Dlibpng-src="$NATIVE_DIR/libpng" \
+        -Dzlib-src="$NATIVE_DIR/zlib" \
         -Djava-include="$JAVA_HOME_RESOLVED/include" \
         -Djni-md-include="$NATIVE_DIR/jni-headers/$jni_dir" \
         -Dgenerated-headers="$GENERATED_HEADERS_DIR"
@@ -439,7 +407,7 @@ main() {
         exit 0
     fi
 
-    ensure_freetype_source
+    "$NATIVE_DIR/sync-natives.sh" --verify
     mkdir -p "$RESOURCES_DIR"
     mkdir -p "$BUILD_ROOT"
     GENERATED_HEADERS_DIR="$(prepare_java_bindings)"

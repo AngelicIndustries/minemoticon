@@ -3,7 +3,7 @@
 ![logo](images/logo_small.png)
 
 Emoji and font support for `1.7.10 Minecraft`. Custom packs, server packs, animated custom emojis, picker, autocomplete, multiplayer sharing, and emoji fonts.
-This mod bundles the [FreeType](https://freetype.org/) library for font rendering. The default emoji font uses [Twemoji](https://github.com/twitter/twemoji).
+This mod bundles [HarfBuzz](https://harfbuzz.github.io/) for font shaping and rendering, with Java font parsers as a fallback. The default emoji font uses [Twemoji](https://github.com/twitter/twemoji).
 
 [![hub](images/badges/github.png)](https://github.com/AngelicIndustries/minemoticon/releases)
 [![curse](images/badges/curse.png)](https://www.curseforge.com/minecraft/mc-mods/minemoticon)
@@ -45,17 +45,17 @@ Install AngelLib 1.0.0 or newer alongside Minemoticon, including when using the 
 
 `./gradlew build`
 
-Native FreeType support is built automatically as part of `build`, leveraging the zig compiler.
+The native HarfBuzz library (with libpng and zlib) is built automatically as part of `build`, leveraging the zig compiler.
 
-If you cloned without submodules, initialize FreeType first:
+If you cloned without submodules, initialize them first:
 ```sh
 git submodule update --init --checkout
 ```
 
-FreeType and Zig versions are configured in `dependencies.gradle`.
-After changing `freetypeVersion`, run:
+The HarfBuzz, libpng and zlib tags are pinned in `native/sync-natives.sh`, the Zig version in `dependencies.gradle`.
+After changing a tag, run:
 ```sh
-./gradlew syncFreetypeSubmodule
+./gradlew syncNativeSubmodules
 ```
 
 To update the bundled emoji data and font:
@@ -67,7 +67,7 @@ To update the bundled emoji data and font:
 
 * [Twemoji](https://github.com/twitter/twemoji) for default emoji assets.
 * [iamcal/emoji-data](https://github.com/iamcal/emoji-data) for emoji metadata.
-* [FreeType](https://freetype.org/).
+* [HarfBuzz](https://harfbuzz.github.io/), [libpng](http://www.libpng.org/pub/png/libpng.html) and [zlib](https://zlib.net/).
 * [GT:NH buildscript](https://github.com/GTNewHorizons/ExampleMod1.7.10).
 
 ## License

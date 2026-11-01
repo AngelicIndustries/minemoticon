@@ -21,6 +21,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import industries.angelic.minemoticon.harfbuzz.HarfBuzzFont;
+
 // Renders colored emoji glyphs from a COLR/CPAL OpenType font.
 // Self-contained, no Minecraft dependencies -- can be moved to a library.
 public class ColorFont {
@@ -31,7 +33,9 @@ public class ColorFont {
     private final GlyfParser glyf; // null if no glyf table
     private final CbdtParser cbdt; // null if no CBDT table
     private final SvgParser svg; // null if no SVG table
-    private final industries.angelic.minemoticon.freetype.FreeTypeRenderer freetype; // null if FreeType unavailable
+    private final GsubParser gsub; // null if no usable GSUB ligatures
+    private final HarfBuzzFont harfbuzz; // null if the native library is unavailable
+    private final boolean nativeColorTables; // COLRv1/sbix and friends that only HarfBuzz draws
     private final Font shapingFont; // null if AWT couldn't load the font for GSUB shaping
     private final List<VariationAxis> variationAxes;
     private final int unitsPerEm;
@@ -40,7 +44,7 @@ public class ColorFont {
     private static final FontRenderContext SHAPING_CONTEXT = new FontRenderContext(new AffineTransform(), true, false);
 
     private ColorFont(CmapParser cmap, ColrParser colr, CpalParser cpal, GlyfParser glyf, CbdtParser cbdt,
-        SvgParser svg, industries.angelic.minemoticon.freetype.FreeTypeRenderer freetype, Font shapingFont,
+        SvgParser svg, GsubParser gsub, HarfBuzzFont harfbuzz, boolean nativeColorTables, Font shapingFont,
         List<VariationAxis> variationAxes, int unitsPerEm, int ascent, int descent) {
         this.cmap = cmap;
         this.colr = colr;
@@ -48,7 +52,9 @@ public class ColorFont {
         this.glyf = glyf;
         this.cbdt = cbdt;
         this.svg = svg;
-        this.freetype = freetype;
+        this.gsub = gsub;
+        this.harfbuzz = harfbuzz;
+        this.nativeColorTables = nativeColorTables;
         this.shapingFont = shapingFont;
         this.variationAxes = variationAxes;
         this.unitsPerEm = unitsPerEm;
@@ -67,16 +73,15 @@ public class ColorFont {
             throw new IOException("Font missing cmap table");
         }
 
-        // FreeType can handle formats we don't parse directly (for example some
-        // color-only fonts), so load it before rejecting the font as unsupported.
-        var ftRenderer = industries.angelic.minemoticon.freetype.FreeTypeRenderer.load(reader.getFontData());
+        // HarfBuzz draws formats the Java parsers don't (COLRv1, sbix), so load it before rejecting the font
+        var hbFont = HarfBuzzFont.load(reader.getFontData());
 
         boolean hasGlyf = reader.hasTable("glyf") && reader.hasTable("loca");
         boolean hasCbdt = reader.hasTable("CBDT") && reader.hasTable("CBLC");
         boolean hasSvg = reader.hasTable("SVG ");
 
-        if (!hasGlyf && !hasCbdt && !hasSvg && ftRenderer == null) {
-            throw new IOException("Font has no renderable glyph data (needs glyf, CBDT, SVG, or FreeType support)");
+        if (!hasGlyf && !hasCbdt && !hasSvg && hbFont == null) {
+            throw new IOException("Font has no renderable glyph data (needs glyf, CBDT, SVG, or HarfBuzz)");
         }
 
         var head = new HeadParser(reader.getTable("head"));
@@ -117,6 +122,16 @@ public class ColorFont {
             svgTable = new SvgParser(reader.getTable("SVG "), head.unitsPerEm, head.ascent, head.descent);
         }
 
+        GsubParser gsubTable = null;
+        if (reader.hasTable("GSUB")) {
+            try {
+                var parsed = new GsubParser(reader.getTable("GSUB"));
+                if (parsed.hasLigatures()) gsubTable = parsed;
+            } catch (RuntimeException ignored) {
+                // Malformed GSUB: sequences fall back to AWT shaping
+            }
+        }
+
         List<VariationAxis> variationAxes = Collections.emptyList();
         if (reader.hasTable("fvar")) {
             variationAxes = new FvarParser(reader.getTable("fvar")).getAxes();
@@ -129,9 +144,12 @@ public class ColorFont {
             awtShapingFont = applyVariationSettings(baseFont, variationAxes, variationSettings);
         } catch (Exception ignored) {}
 
-        if (ftRenderer != null) {
-            ftRenderer.configureVariations(variationAxes, variationSettings);
+        if (hbFont != null) {
+            hbFont.configureVariations(variationAxes, variationSettings);
+            hbFont.setLineMetrics(head.ascent, head.descent);
         }
+        boolean nativeColorTables = hbFont != null
+            && (reader.hasTable("COLR") || reader.hasTable("CBDT") || reader.hasTable("sbix"));
 
         return new ColorFont(
             cmapTable,
@@ -140,7 +158,9 @@ public class ColorFont {
             glyfTable,
             cbdtTable,
             svgTable,
-            ftRenderer,
+            gsubTable,
+            hbFont,
+            nativeColorTables,
             awtShapingFont,
             variationAxes,
             head.unitsPerEm,
@@ -153,14 +173,14 @@ public class ColorFont {
     }
 
     public boolean supportsTextBold() {
-        return freetype != null && freetype.supportsBoldVariation();
+        return harfbuzz != null && harfbuzz.supportsBoldVariation();
     }
 
     public boolean hasAnyColorGlyphs() {
         if (colr.getLayerCount() > 0) return true;
         if (cbdt != null && cbdt.getGlyphCount() > 0) return true;
         if (svg != null && svg.getGlyphCount() > 0) return true;
-        return false;
+        return nativeColorTables;
     }
 
     public String debugPreparedSvg(int codepoint) {
@@ -189,32 +209,21 @@ public class ColorFont {
     }
 
     public boolean hasGlyph(int codepoint) {
+        return hasRenderableGlyphId(glyphIdFor(codepoint));
+    }
+
+    private int glyphIdFor(int codepoint) {
         int glyphId = cmap.getGlyphId(codepoint);
-        if (glyphId == 0) {
-            // cmap miss -- FreeType might still have it via GSUB or other tables
-            return freetype != null && freetype.canRenderGlyph(codepoint);
-        }
-        if (cbdt != null && cbdt.hasBitmap(glyphId)) return true;
-        if (svg != null && svg.hasSvg(glyphId)) return true;
-        if (colr.hasLayers(glyphId)) return true;
-        if (glyf != null && glyf.hasOutline(glyphId)) return true;
-        // Last resort: FreeType for COLRv1 and other formats we can't parse
-        return freetype != null && freetype.canRenderGlyph(codepoint);
+        // HarfBuzz reads every cmap subtable format, the Java parser only the common ones
+        return glyphId == 0 && harfbuzz != null ? harfbuzz.nominalGlyph(codepoint) : glyphId;
     }
 
     // Render a single-codepoint emoji to a BufferedImage at the given pixel size.
     public BufferedImage renderGlyph(int codepoint, int size) {
-        int glyphId = cmap.getGlyphId(codepoint);
+        int glyphId = glyphIdFor(codepoint);
 
-        // Priority: CBDT > SVG > COLR v0 > FreeType (COLRv1) > monochrome glyf
         BufferedImage direct = renderGlyphByIdAny(glyphId, size);
         if (direct != null) return direct;
-
-        // FreeType fallback for COLRv1 and other formats we can't parse natively
-        if (freetype != null) {
-            var ftImg = freetype.renderGlyph(codepoint, size);
-            if (ftImg != null) return ftImg;
-        }
 
         // Monochrome glyf outlines as last resort
         if (glyphId != 0) {
@@ -262,7 +271,7 @@ public class ColorFont {
 
     public BufferedImage renderTextGlyph(int codepoint, int size, boolean bold) {
         if (bold && supportsTextBold()) {
-            return freetype.renderTextGlyph(codepoint, size, true, ascent, descent);
+            return harfbuzz.renderTextGlyph(codepoint, size, true);
         }
         if (shapingFont == null) return renderGlyph(codepoint, size);
 
@@ -311,7 +320,7 @@ public class ColorFont {
 
     public float getTextGlyphAdvance(int codepoint, int size, boolean bold) {
         if (bold && supportsTextBold()) {
-            return freetype.getTextGlyphAdvance(codepoint, size, true);
+            return harfbuzz.getTextGlyphAdvance(codepoint, size, true);
         }
         if (shapingFont == null) return -1.0f;
 
@@ -331,7 +340,7 @@ public class ColorFont {
 
     public float getTextGlyphOffsetX(int codepoint, int size, boolean bold) {
         if (bold && supportsTextBold()) {
-            return freetype.getTextGlyphOffsetX(codepoint, size, true);
+            return harfbuzz.getTextGlyphOffsetX(codepoint, size, true);
         }
         if (shapingFont == null) return 0.0f;
 
@@ -358,7 +367,7 @@ public class ColorFont {
 
     public industries.angelic.minemoticon.font.TextRunLayout layoutTextRun(String text, int size, boolean bold) {
         if (bold && supportsTextBold()) {
-            return freetype.layoutTextRun(text, size, true);
+            return harfbuzz.layoutTextRun(text, size, true);
         }
         if (shapingFont == null || text == null || text.isEmpty()) return null;
 
@@ -426,6 +435,15 @@ public class ColorFont {
     }
 
     private int findRenderableSequenceGlyphId(int[] codepoints) {
+        if (harfbuzz != null) {
+            int shapedGlyphId = harfbuzz.shapeToSingleGlyph(codepoints);
+            if (hasRenderableGlyphId(shapedGlyphId)) return shapedGlyphId;
+        }
+
+        // Without the native library: GSUB ligatures, then AWT layout
+        int ligatureGlyphId = findLigatureGlyphId(codepoints);
+        if (ligatureGlyphId != 0) return ligatureGlyphId;
+
         if (shapingFont == null || codepoints.length == 0) return 0;
 
         String text = new String(codepoints, 0, codepoints.length);
@@ -464,21 +482,54 @@ public class ColorFont {
         return candidate;
     }
 
+    // Emoji sequences are GSUB ligatures, which AWT layout doesn't apply for these fonts
+    private int findLigatureGlyphId(int[] codepoints) {
+        if (gsub == null) return 0;
+        int glyphId = gsub.resolveLigature(toGlyphIds(codepoints, true));
+        if (glyphId == 0) {
+            // Some fonts build their ligatures without the variation selectors
+            glyphId = gsub.resolveLigature(toGlyphIds(codepoints, false));
+        }
+        return hasRenderableGlyphId(glyphId) ? glyphId : 0;
+    }
+
+    private int[] toGlyphIds(int[] codepoints, boolean keepVariationSelectors) {
+        int[] glyphIds = new int[codepoints.length];
+        int count = 0;
+        for (int codepoint : codepoints) {
+            if (!keepVariationSelectors && (codepoint == 0xFE0E || codepoint == 0xFE0F)) continue;
+            int glyphId = cmap.getGlyphId(codepoint);
+            if (glyphId == 0) return null;
+            glyphIds[count++] = glyphId;
+        }
+        return java.util.Arrays.copyOf(glyphIds, count);
+    }
+
     private boolean hasRenderableGlyphId(int glyphId) {
         if (glyphId == 0) return false;
-        if (cbdt != null && cbdt.hasBitmap(glyphId)) return true;
         if (svg != null && svg.hasSvg(glyphId)) return true;
+        if (harfbuzz != null && harfbuzz.canRenderGlyphId(glyphId)) return true;
+        // Java parsers, the fallback without the native library
+        if (cbdt != null && cbdt.hasBitmap(glyphId)) return true;
         if (colr.hasLayers(glyphId)) return true;
         return glyf != null && glyf.hasOutline(glyphId);
     }
 
     private BufferedImage renderGlyphByIdAny(int glyphId, int size) {
         if (glyphId == 0) return null;
+        // jsvg draws SVG glyphs; the HarfBuzz raster library doesn't
+        if (svg != null && svg.hasSvg(glyphId)) {
+            BufferedImage svgImage = svg.renderGlyph(glyphId, size);
+            if (svgImage != null) return svgImage;
+        }
+        // HarfBuzz: COLRv0/v1, CBDT/sbix bitmaps and outlines
+        if (harfbuzz != null) {
+            BufferedImage image = harfbuzz.renderGlyphId(glyphId, size);
+            if (image != null) return image;
+        }
+        // Java parsers, the fallback without the native library
         if (cbdt != null && cbdt.hasBitmap(glyphId)) {
             return scaleBitmap(cbdt.getBitmap(glyphId), size);
-        }
-        if (svg != null && svg.hasSvg(glyphId)) {
-            return svg.renderGlyph(glyphId, size);
         }
         if (colr.hasLayers(glyphId)) {
             return renderGlyphById(glyphId, size);

@@ -49,7 +49,7 @@ gradle.allprojects {
 
 tasks.withType<JavaExec>().configureEach {
     if (name.startsWith("run")) {
-        dependsOn("buildFreetypeNatives")
+        dependsOn("buildNatives")
     }
 
     if (name.startsWith("runServer")) {
@@ -91,17 +91,6 @@ tasks.register<JavaExec>("renderEmojiFontHeadless") {
     }
 }
 
-extensions.getByType(org.gradle.api.tasks.SourceSetContainer::class.java)
-    .named("main") {
-        java.srcDir("native/freetype-jni/freetype-jni")
-    }
-
-val configuredFreetypeVersion = providers.provider {
-    (findProperty("freetypeVersion") as String?) ?: "2.15.0"
-}
-val configuredFreetypeTag = configuredFreetypeVersion.map { version ->
-    "VER-" + version.replace('.', '-')
-}
 val configuredZigVersion = providers.provider {
     (findProperty("zigVersion") as String?) ?: "0.13.0"
 }
@@ -118,11 +107,11 @@ val configuredNativeTargets = providers.gradleProperty("nativeTargets")
     .orElse(defaultNativeTargets)
 val nativeBuildScript = layout.projectDirectory.file("native/build-zig.sh")
     .asFile.absolutePath
-val freetypeSyncScript = layout.projectDirectory.file("native/sync-freetype.sh")
+// Pins the HarfBuzz, libpng and zlib submodule tags
+val nativeSyncScript = layout.projectDirectory.file("native/sync-natives.sh")
     .asFile.absolutePath
 val localZigRoot = layout.projectDirectory.dir("native/toolchains/zig")
-val freetypeSubmoduleRoot = layout.projectDirectory.dir("native/freetype")
-val generatedNativeResourcesRoot = layout.buildDirectory.dir("generated/freetype-resources")
+val generatedNativeResourcesRoot = layout.buildDirectory.dir("generated/native-resources")
 val generatedBundledNativeResources = generatedNativeResourcesRoot.map { it.dir("natives") }
 
 tasks.register<Exec>("setupLocalZig") {
@@ -136,59 +125,51 @@ tasks.register<Exec>("setupLocalZig") {
     outputs.dir(localZigRoot)
 }
 
-tasks.register<Exec>("syncFreetypeSubmodule") {
+tasks.register<Exec>("syncNativeSubmodules") {
     group = "build setup"
-    description = "Initialize the FreeType submodule and check out the configured release tag."
+    description = "Initialize the HarfBuzz, libpng and zlib submodules and check out their pinned tags."
     workingDir = project.projectDir
-    environment("FREETYPE_VERSION", configuredFreetypeVersion.get())
-    environment("FREETYPE_TAG", configuredFreetypeTag.get())
-    commandLine("bash", freetypeSyncScript, "--sync")
-    inputs.file(freetypeSyncScript)
+    commandLine("bash", nativeSyncScript, "--sync")
+    inputs.file(nativeSyncScript)
     inputs.file(layout.projectDirectory.file(".gitmodules"))
-    inputs.property("freetypeVersion", configuredFreetypeVersion)
     outputs.upToDateWhen { false }
 }
 
-tasks.register<Exec>("ensureFreetypeSubmodule") {
+tasks.register<Exec>("ensureNativeSubmodules") {
     group = "build setup"
-    description = "Initialize the FreeType submodule and verify it matches the configured release tag."
+    description = "Initialize the HarfBuzz, libpng and zlib submodules and verify their pinned tags."
     workingDir = project.projectDir
-    environment("FREETYPE_VERSION", configuredFreetypeVersion.get())
-    environment("FREETYPE_TAG", configuredFreetypeTag.get())
-    commandLine("bash", freetypeSyncScript, "--verify")
-    inputs.file(freetypeSyncScript)
+    commandLine("bash", nativeSyncScript, "--verify")
+    inputs.file(nativeSyncScript)
     inputs.file(layout.projectDirectory.file(".gitmodules"))
-    inputs.property("freetypeVersion", configuredFreetypeVersion)
     outputs.upToDateWhen { false }
 }
 
-tasks.register<Exec>("buildFreetypeNatives") {
+tasks.register<Exec>("buildNatives") {
     group = "build"
-    description = "Build bundled FreeType JNI natives for all supported platforms using the local Zig toolchain."
+    description = "Build the bundled HarfBuzz JNI natives for all supported platforms using the local Zig toolchain."
     workingDir = project.projectDir
     dependsOn("setupLocalZig")
-    dependsOn("ensureFreetypeSubmodule")
-    environment("FREETYPE_VERSION", configuredFreetypeVersion.get())
-    environment("FREETYPE_TAG", configuredFreetypeTag.get())
+    dependsOn("ensureNativeSubmodules")
     environment("ZIG_VERSION", configuredZigVersion.get())
     environment("NATIVE_RESOURCE_DIR", generatedBundledNativeResources.get().asFile.absolutePath)
     commandLine("bash", nativeBuildScript, configuredNativeTargets.get())
     inputs.file(nativeBuildScript)
-    inputs.file(freetypeSyncScript)
+    inputs.file(nativeSyncScript)
     inputs.file(layout.projectDirectory.file(".gitmodules"))
-    inputs.file(layout.projectDirectory.file("native/freetype-jni/build.zig"))
-    inputs.file(layout.projectDirectory.file("native/freetype-jni/jni/freetype_jni.c"))
-    inputs.dir(layout.projectDirectory.dir("native/freetype-jni/freetype-jni"))
-    inputs.dir(freetypeSubmoduleRoot)
+    inputs.dir(layout.projectDirectory.dir("native/harfbuzz-jni"))
+    inputs.file(layout.projectDirectory.file("src/main/java/industries/angelic/minemoticon/harfbuzz/HarfBuzz.java"))
+    inputs.dir(layout.projectDirectory.dir("native/harfbuzz/src"))
+    inputs.dir(layout.projectDirectory.dir("native/libpng"))
+    inputs.dir(layout.projectDirectory.dir("native/zlib"))
     inputs.dir(layout.projectDirectory.dir("native/jni-headers"))
-    inputs.property("freetypeVersion", configuredFreetypeVersion)
     inputs.property("zigVersion", configuredZigVersion)
     inputs.property("nativeTargets", configuredNativeTargets)
     outputs.dir(generatedNativeResourcesRoot)
 }
 
 tasks.named<ProcessResources>("processResources").configure {
-    dependsOn("buildFreetypeNatives")
+    dependsOn("buildNatives")
     from(generatedNativeResourcesRoot)
 
     notCompatibleWithConfigurationCache("Expands dependency versions and embeds the DepLoader bootstrap.")
@@ -204,7 +185,7 @@ tasks.named<ProcessResources>("processResources").configure {
 }
 
 tasks.named("jar").configure {
-    dependsOn("buildFreetypeNatives")
+    dependsOn("buildNatives")
 }
 
 val baseJar = tasks.named<Jar>("jar")
