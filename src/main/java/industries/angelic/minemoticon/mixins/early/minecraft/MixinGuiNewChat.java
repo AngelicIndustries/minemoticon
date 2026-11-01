@@ -1,14 +1,24 @@
 package industries.angelic.minemoticon.mixins.early.minecraft;
 
+import java.util.List;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.ChatLine;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.GuiNewChat;
+import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.util.IChatComponent;
+import net.minecraft.util.MathHelper;
 
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import industries.angelic.minemoticon.ClientEmojiHandler;
 import industries.angelic.minemoticon.Minemoticon;
@@ -19,6 +29,50 @@ import industries.angelic.minemoticon.text.TextStyleCompat;
 
 @Mixin(GuiNewChat.class)
 public abstract class MixinGuiNewChat {
+
+    @Shadow
+    @Final
+    private Minecraft mc;
+
+    @Shadow
+    @Final
+    private List<ChatLine> field_146253_i;
+
+    @Shadow
+    private int field_146250_j;
+
+    @Shadow
+    public abstract float func_146244_h();
+
+    // Lines with inline styles stay one component, since splitting them at emojis would drop the
+    // styles, so vanilla finds no emoji component under the mouse. Find the emoji in the drawn text.
+    @Inject(method = "func_146236_a", at = @At("RETURN"), cancellable = true)
+    private void minemoticon$emojiHoverFallback(int mouseX, int mouseY, CallbackInfoReturnable<IChatComponent> cir) {
+        IChatComponent found = cir.getReturnValue();
+        if (found == null || found.getChatStyle()
+            .getChatHoverEvent() != null) {
+            return;
+        }
+
+        // Same mapping vanilla used to pick the component
+        int scale = new ScaledResolution(this.mc, this.mc.displayWidth, this.mc.displayHeight).getScaleFactor();
+        float chatScale = func_146244_h();
+        int x = MathHelper.floor_float((mouseX / scale - 3) / chatScale);
+        int y = MathHelper.floor_float((mouseY / scale - 27) / chatScale);
+        int lineIndex = y / this.mc.fontRenderer.FONT_HEIGHT + this.field_146250_j;
+        if (lineIndex < 0 || lineIndex >= this.field_146253_i.size()) {
+            return;
+        }
+
+        String text = this.field_146253_i.get(lineIndex)
+            .func_151461_a()
+            .getFormattedText();
+        IChatComponent hover = ChatEmojiTooltipHelper
+            .emojiHoverAt(this.mc.fontRenderer, text, x, minemoticon$shouldMatchColonAliases(text));
+        if (hover != null) {
+            cir.setReturnValue(hover);
+        }
+    }
 
     @Unique
     private static int minemoticon$chatDebugLogs;

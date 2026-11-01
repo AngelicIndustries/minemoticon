@@ -3,6 +3,7 @@ package industries.angelic.minemoticon.gui;
 import java.util.Iterator;
 import java.util.List;
 
+import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.event.HoverEvent;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.ChatStyle;
@@ -77,6 +78,49 @@ public final class ChatEmojiTooltipHelper {
         }
 
         return true;
+    }
+
+    // The emoji drawn at chat x in a formatted line, as a component carrying its tooltip. Walks the
+    // line like the renderer does and places each emoji at the measured width of the text before it.
+    public static IChatComponent emojiHoverAt(FontRenderer font, String line, int x, boolean colonAliases) {
+        String text = TextStyleCompat.normalize(line);
+        boolean previous = EmojiRenderer.pushColonAliasMatching(colonAliases);
+        try {
+            for (int i = 0; i < text.length();) {
+                int tokenEnd = TextStyleCompat.tokenEnd(text, i);
+                if (tokenEnd > i) {
+                    i = tokenEnd;
+                    continue;
+                }
+                EmojiRenderer.EscapeMatch escaped = EmojiRenderer.matchEscapeAt(text, i);
+                if (escaped != null) {
+                    i = escaped.getNextIndex();
+                    continue;
+                }
+                EmojiRenderer.EmojiMatch emoji = EmojiRenderer.matchAt(text, i);
+                if (emoji == null) {
+                    i += Character.charCount(text.codePointAt(i));
+                    continue;
+                }
+
+                int left = font.getStringWidth(text.substring(0, i));
+                if (x < left) return null;
+                if (x < left + EmojiRenderer.EMOJI_SIZE) {
+                    String tooltip = getTooltipText(
+                        EmojiRenderer.ParsedSegment.emoji(emoji.getText(), emoji.getEmoji()));
+                    if (tooltip.isEmpty()) return null;
+                    ChatComponentText hover = new ChatComponentText("");
+                    hover.setChatStyle(
+                        new ChatStyle().setChatHoverEvent(
+                            new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ChatComponentText(tooltip))));
+                    return hover;
+                }
+                i += emoji.getLength();
+            }
+        } finally {
+            EmojiRenderer.popColonAliasMatching(previous);
+        }
+        return null;
     }
 
     private static boolean emojiSplitWouldLoseInlineStyle(String text, List<EmojiRenderer.ParsedSegment> segments) {
