@@ -441,7 +441,7 @@ public class PackManagementScreen extends GuiScreen implements DropListener {
         int tipX = mouseX + 12;
         int tipY = mouseY - 6;
         if (tipX + textWidth + 6 > width) {
-            tipX = mouseX - textWidth - 8;
+            tipX = Math.max(4, mouseX - textWidth - 8);
         }
         Gui.drawRect(tipX - 3, tipY - 3, tipX + textWidth + 3, tipY + 11, 0xE0000000);
         Gui.drawRect(tipX - 3, tipY - 3, tipX + textWidth + 3, tipY - 2, 0x50FF8080);
@@ -1194,11 +1194,14 @@ public class PackManagementScreen extends GuiScreen implements DropListener {
             Gui.drawRect(x, y, x + width, y + 1, 0x30FFFFFF);
             Gui.drawRect(x, y + CARD_HEIGHT - 1, x + width, y + CARD_HEIGHT, 0x20000000);
 
-            fontRendererObj.drawStringWithShadow(
-                trimToWidthWithEllipsis(getCardTitle(), width - CARD_PAD * 2 - MINI_BTN_W * 2 - 8),
+            drawTrimmedStringWithShadow(
+                getCardTitle(),
                 x + CARD_PAD,
                 y + 6,
-                0xD8D8D8);
+                width - CARD_PAD * 2 - MINI_BTN_W * 2 - 8,
+                0xD8D8D8,
+                mouseX,
+                mouseY);
 
             drawFieldLabel("Pack", nameFieldX, y + 22);
             drawFieldLabel("Icon", iconFieldX, y + 22, isIconNameInvalid() ? 0xFFB86A6A : 0x909090);
@@ -1325,11 +1328,14 @@ public class PackManagementScreen extends GuiScreen implements DropListener {
                     renameFieldX + renameFieldW,
                     renameFieldY + FIELD_H,
                     0x40101010);
-                fontRendererObj.drawStringWithShadow(
-                    trimToWidthWithEllipsis(EMPTY_RENAME_HINT, renameFieldW - 8),
+                drawTrimmedStringWithShadow(
+                    EMPTY_RENAME_HINT,
                     renameFieldX + 4,
                     renameFieldY + 3,
-                    0x777777);
+                    renameFieldW - 8,
+                    0x777777,
+                    mouseX,
+                    mouseY);
             }
 
             PackEmojiItem iconEmoji = findEmojiByName(getIconNameText());
@@ -1881,6 +1887,16 @@ public class PackManagementScreen extends GuiScreen implements DropListener {
         }
 
         return fontRendererObj.trimStringToWidth(text, maxWidth - ellipsisWidth) + ellipsis;
+    }
+
+    // Shows the full text as a tooltip while hovered, if it had to be ellipsized
+    private void drawTrimmedStringWithShadow(String text, int x, int y, int maxWidth, int color, int mouseX,
+        int mouseY) {
+        String trimmed = trimToWidthWithEllipsis(text, maxWidth);
+        fontRendererObj.drawStringWithShadow(trimmed, x, y, color);
+        if (!trimmed.equals(text) && isInside(mouseX, mouseY, x, y - 1, maxWidth, fontRendererObj.FONT_HEIGHT + 2)) {
+            setTooltip(mouseX, mouseY, text);
+        }
     }
 
     private void drawOutline(int x, int y, int w, int h, int color) {
