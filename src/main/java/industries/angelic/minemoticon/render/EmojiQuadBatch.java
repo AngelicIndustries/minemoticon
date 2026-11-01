@@ -39,6 +39,11 @@ public final class EmojiQuadBatch {
     private final List<Group> pending = new ArrayList<>();
 
     public void add(RenderableEmoji emoji, float x, float y) {
+        add(emoji, x, y, false);
+    }
+
+    // flipped: upside down in place, for Angelica's dinnerbone (&v) text
+    public void add(RenderableEmoji emoji, float x, float y, boolean flipped) {
         if (EmojiRenderer.isUnresolvedPlaceholder(emoji)) {
             // Untextured, so it can't join a texture group
             EmojiRenderer.renderQuad(emoji, x, y);
@@ -64,10 +69,12 @@ public final class EmojiQuadBatch {
         float[] uv = emoji.getUV();
         group.quads[i] = x;
         group.quads[i + 1] = y;
+        float v0 = uv != null ? uv[1] : 0.0f;
+        float v1 = uv != null ? uv[3] : 1.0f;
         group.quads[i + 2] = uv != null ? uv[0] : 0.0f;
-        group.quads[i + 3] = uv != null ? uv[1] : 0.0f;
+        group.quads[i + 3] = flipped ? v1 : v0;
         group.quads[i + 4] = uv != null ? uv[2] : 1.0f;
-        group.quads[i + 5] = uv != null ? uv[3] : 1.0f;
+        group.quads[i + 5] = flipped ? v0 : v1;
         group.count++;
     }
 

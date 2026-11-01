@@ -3,6 +3,7 @@ package industries.angelic.minemoticon.mixins.early.minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.GuiTextField;
 
+import org.lwjgl.input.Keyboard;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -11,6 +12,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import industries.angelic.minemoticon.ClientEmojiHandler;
 import industries.angelic.minemoticon.Minemoticon;
@@ -38,6 +40,9 @@ public abstract class MixinGuiTextField {
     private int lineScrollOffset;
 
     @Shadow
+    private int maxStringLength;
+
+    @Shadow
     public abstract boolean isFocused();
 
     @Shadow
@@ -58,10 +63,26 @@ public abstract class MixinGuiTextField {
     @Unique
     private static int minemoticon$textFieldDebugLogs;
 
+    @Unique
+    private boolean minemoticon$arrowKeyTyped;
+
+    @Inject(method = "textboxKeyTyped", at = @At("HEAD"))
+    private void minemoticon$beginKeyTyped(char typedChar, int keyCode, CallbackInfoReturnable<Boolean> cir) {
+        minemoticon$arrowKeyTyped = keyCode == Keyboard.KEY_LEFT || keyCode == Keyboard.KEY_RIGHT;
+    }
+
+    @Inject(method = "textboxKeyTyped", at = @At("RETURN"))
+    private void minemoticon$endKeyTyped(char typedChar, int keyCode, CallbackInfoReturnable<Boolean> cir) {
+        minemoticon$arrowKeyTyped = false;
+    }
+
     // Expand cursor movement to skip over full Unicode emoji sequences
     @ModifyVariable(method = "moveCursorBy", at = @At("HEAD"), argsOnly = true)
     private int minemoticon$expandEmojiCursorMove(int amount) {
         if (text == null || text.isEmpty()) return amount;
+        if (minemoticon$arrowKeyTyped && (amount == -1 || amount == 1)) {
+            return minemoticon$arrowStep(selectionEnd, amount) - selectionEnd;
+        }
 
         if (amount == -1) {
             int start = findEmojiStart(text, selectionEnd);
@@ -107,7 +128,53 @@ public abstract class MixinGuiTextField {
 
     @ModifyVariable(method = "setSelectionPos", at = @At("HEAD"), argsOnly = true)
     private int minemoticon$snapSelectionPositionToEmojiBoundary(int position) {
+        // Shift+arrow selects through here
+        int delta = position - selectionEnd;
+        if (minemoticon$arrowKeyTyped && text != null && (delta == -1 || delta == 1)) {
+            return minemoticon$arrowStep(selectionEnd, delta);
+        }
         return snapToEmojiBoundary(position, selectionEnd);
+    }
+
+    // One arrow press: past the format codes next to the cursor, then one character or emoji. Format
+    // codes draw nothing, so a stop on each side of one looked like a press that did nothing.
+    @Unique
+    private int minemoticon$arrowStep(int from, int direction) {
+        if (direction > 0) {
+            int pos = from;
+            while (pos < text.length()) {
+                int tokenEnd = TextStyleCompat.inputTokenEnd(text, pos);
+                if (tokenEnd <= pos) break;
+                pos = tokenEnd;
+            }
+            if (pos >= text.length()) return text.length();
+            int end = findEmojiEnd(text, pos);
+            return end > pos ? end : pos + Character.charCount(text.codePointAt(pos));
+        }
+
+        int pos = minemoticon$formatCodesStart(text, Math.min(from, text.length()));
+        if (pos <= 0) return 0;
+        int start = findEmojiStart(text, pos);
+        return start >= 0 ? start : pos - 1;
+    }
+
+    // Start of the format codes that end right at pos, or pos. Scans from the start: tokens only
+    // read forwards, so a backwards scan could mistake the tail of one for another.
+    @Unique
+    private static int minemoticon$formatCodesStart(String text, int pos) {
+        int runStart = pos;
+        int i = 0;
+        while (i < pos) {
+            int tokenEnd = TextStyleCompat.inputTokenEnd(text, i);
+            if (tokenEnd > i && tokenEnd <= pos) {
+                if (runStart == pos) runStart = i;
+                i = tokenEnd;
+            } else {
+                runStart = pos;
+                i++;
+            }
+        }
+        return runStart;
     }
 
     @Inject(method = "writeText", at = @At("TAIL"))
@@ -138,12 +205,13 @@ public abstract class MixinGuiTextField {
             value = "INVOKE",
             target = "Lnet/minecraft/client/gui/FontRenderer;drawStringWithShadow(Ljava/lang/String;III)I"))
     private int minemoticon$drawTextBoxSegment(FontRenderer font, String segment, int x, int y, int color) {
-        if ("_".equals(segment)) {
+        // The end caret. Mid-text a "_" is the text after the cursor, already in the whole preview.
+        if ("_".equals(segment) && !minemoticon$caretIsBar()) {
             return font.drawStringWithShadow(segment, x, y, color);
         }
 
         String visible = minemoticon$getVisibleText(font);
-        if (!minemoticon$needsWholePreviewDraw(visible)) {
+        if (!minemoticon$needsWholePreviewDraw(font, visible)) {
             return font.drawStringWithShadow(segment, x, y, color);
         }
 
@@ -153,7 +221,13 @@ public abstract class MixinGuiTextField {
             int call = minemoticon$drawTextBoxStringCall++;
             if (call == 0) {
                 String prefix = TextStyleCompat.activeFormatPrefix(text, lineScrollOffset);
-                font.drawStringWithShadow(prefix + visible, x, y, color);
+                if (minemoticon$canDrawCompat(font)) {
+                    // The caret is placed by measuring, so draw with the renderer that measures
+                    ((FontRendererEmojiCompat) font)
+                        .minemoticon$drawStringCompatDirect(prefix + visible, x, y, color, true);
+                } else {
+                    font.drawStringWithShadow(prefix + visible, x, y, color);
+                }
                 minemoticon$drawTextBoxRenderedWholePreview = true;
                 minemoticon$logTextFieldCompat(font, visible, segment, x);
                 return minemoticon$textBoxShadowEnd(font, visible, x);
@@ -172,10 +246,24 @@ public abstract class MixinGuiTextField {
     private int minemoticon$textBoxShadowEnd(FontRenderer font, String visible, int x) {
         String prefix = TextStyleCompat.activeFormatPrefix(text, lineScrollOffset);
         String beforeCursor = minemoticon$getVisibleTextBeforeCursor(visible);
-        int width = font instanceof FontRendererEmojiCompat compat
-            ? compat.minemoticon$getStringWidthCompatDirect(prefix + beforeCursor)
-            : font.getStringWidth(prefix + beforeCursor);
-        return x + width + 1;
+        if (!(font instanceof FontRendererEmojiCompat compat)) {
+            return x + font.getStringWidth(prefix + beforeCursor) + 1;
+        }
+        // The bar is drawn one left of this, the end caret underscore at it
+        if (!minemoticon$caretIsBar()) {
+            return x + compat.minemoticon$getStringWidthCompatDirect(prefix + beforeCursor) + 1;
+        }
+        // Custom font glyphs sit at fractional x with barely a gap between them. Flooring centers the
+        // bar on where the next one starts, ceil pushed it into the glyph.
+        float offset = compat
+            .minemoticon$getCaretOffsetCompatDirect(prefix + visible, prefix.length() + beforeCursor.length());
+        return x + (int) Math.floor(offset + 0.001f) + 1;
+    }
+
+    // Vanilla's choice between the 1px bar mid-text and the underscore at the end
+    @Unique
+    private boolean minemoticon$caretIsBar() {
+        return cursorPosition < text.length() || text.length() >= maxStringLength;
     }
 
     @Unique
@@ -253,7 +341,7 @@ public abstract class MixinGuiTextField {
     }
 
     @Unique
-    private boolean minemoticon$needsWholePreviewDraw(String visible) {
+    private boolean minemoticon$needsWholePreviewDraw(FontRenderer font, String visible) {
         String prefix = TextStyleCompat.activeFormatPrefix(text, lineScrollOffset);
         String candidate = prefix + visible;
         if (candidate.isEmpty()) {
@@ -261,7 +349,18 @@ public abstract class MixinGuiTextField {
         }
 
         String normalized = TextStyleCompat.normalize(candidate);
-        return EmojiRenderer.parse(normalized) != null || TextStyleCompat.hasExtendedStyle(normalized);
+        if (EmojiRenderer.parse(normalized) != null || TextStyleCompat.hasExtendedStyle(normalized)) {
+            return true;
+        }
+        // Otherwise vanilla draws the text before and after the cursor as two strings. The second
+        // loses the styles set in the first, and custom font glyphs after the cursor shift with it.
+        return minemoticon$canDrawCompat(font) && (normalized.indexOf(TextStyleCompat.FORMAT) >= 0
+            || ((FontRendererEmojiCompat) font).minemoticon$usesCompatRendering(normalized));
+    }
+
+    @Unique
+    private static boolean minemoticon$canDrawCompat(FontRenderer font) {
+        return font instanceof FontRendererEmojiCompat && ClientEmojiHandler.getFontStack() != null;
     }
 
     // Walk backwards from pos to find the start of a Unicode emoji sequence ending at pos

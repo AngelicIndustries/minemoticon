@@ -8,7 +8,8 @@ public final class TextStyleCompat {
     public static final int GRADIENT_PAYLOAD = 28;
     public static final int GRADIENT_LENGTH = 30;
 
-    private static final String VALID_SINGLE_CODES = "0123456789abcdefklmnorqzv";
+    // Angelica's codes: q rainbow, z wave, v dinnerbone, u drop shadow
+    private static final String VALID_SINGLE_CODES = "0123456789abcdefklmnorqzvu";
 
     private static String lastInput;
     private static String lastOutput;
@@ -121,6 +122,10 @@ public final class TextStyleCompat {
         if (code == 'x' && parseSectionXAt(text, index) >= 0) {
             return index + SECTION_X_LENGTH;
         }
+        // &u&#RRGGBB is one token setting the shadow color, not a shadow toggle plus a text color
+        if (code == 'u' && parseSectionXAt(text, index + 2) >= 0) {
+            return index + 2 + SECTION_X_LENGTH;
+        }
         if (code == 'g' && index + GRADIENT_LENGTH <= text.length()
             && parseSectionXAt(text, index + 2) >= 0
             && parseSectionXAt(text, index + 2 + SECTION_X_LENGTH) >= 0) {
@@ -230,6 +235,9 @@ public final class TextStyleCompat {
         boolean underline = false;
         boolean italic = false;
         boolean wave = false;
+        // Angelica's positional effects: color codes keep them, reset clears them
+        boolean dinnerbone = false;
+        String shadowToken = "";
 
         for (int i = 0; i + 1 < normalized.length();) {
             int tokenEnd = tokenEnd(normalized, i);
@@ -248,6 +256,12 @@ public final class TextStyleCompat {
                 effectToken = normalized.substring(i, tokenEnd);
             } else if (code == 'z') {
                 wave = !wave;
+            } else if (code == 'v') {
+                dinnerbone = !dinnerbone;
+            } else if (code == 'u') {
+                // With a color payload it switches the shadow on, alone it toggles
+                boolean colored = tokenEnd - i > 2;
+                shadowToken = colored || shadowToken.isEmpty() ? normalized.substring(i, tokenEnd) : "";
             } else if (code == 'r') {
                 colorToken = "";
                 effectToken = "";
@@ -257,6 +271,8 @@ public final class TextStyleCompat {
                 underline = false;
                 italic = false;
                 wave = false;
+                dinnerbone = false;
+                shadowToken = "";
             } else if (code >= '0' && code <= '9' || code >= 'a' && code <= 'f') {
                 colorToken = normalized.substring(i, tokenEnd);
                 effectToken = "";
@@ -287,6 +303,11 @@ public final class TextStyleCompat {
             prefix.append(FORMAT)
                 .append('z');
         }
+        if (dinnerbone) {
+            prefix.append(FORMAT)
+                .append('v');
+        }
+        prefix.append(shadowToken);
         if (random) {
             prefix.append(FORMAT)
                 .append('k');

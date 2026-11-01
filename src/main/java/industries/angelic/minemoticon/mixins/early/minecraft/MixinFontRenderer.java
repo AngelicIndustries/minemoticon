@@ -1,6 +1,7 @@
 package industries.angelic.minemoticon.mixins.early.minecraft;
 
 import java.lang.reflect.Method;
+import java.util.Random;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
@@ -18,7 +19,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import industries.angelic.minemoticon.ClientEmojiHandler;
-import industries.angelic.minemoticon.api.RenderableEmoji;
 import industries.angelic.minemoticon.font.FontSource;
 import industries.angelic.minemoticon.font.FontStack;
 import industries.angelic.minemoticon.font.GlyphCache;
@@ -128,6 +128,9 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
     @Unique
     private boolean minemoticon$rendering = false;
 
+    @Unique
+    private static final Random minemoticon$OBFUSCATION_RANDOM = new Random();
+
     // Emojis of the string being rendered, drawn grouped by texture once the string is done
     @Unique
     private final EmojiQuadBatch minemoticon$emojiBatch = new EmojiQuadBatch();
@@ -149,6 +152,21 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
 
     @Unique
     private boolean minemoticon$waveStyle = false;
+
+    // &u: an extra drop shadow, optionally in its own color (-1 for the usual darkened one)
+    @Unique
+    private boolean minemoticon$extraShadowStyle = false;
+
+    @Unique
+    private int minemoticon$shadowColorOverride = -1;
+
+    // &v: glyphs drawn upside down
+    @Unique
+    private boolean minemoticon$dinnerboneStyle = false;
+
+    // A shadow pass that only runs for &u spans in text drawn without a drop shadow
+    @Unique
+    private boolean minemoticon$extraShadowPassOnly = false;
 
     @Unique
     private boolean minemoticon$gradientStyle = false;
@@ -249,13 +267,24 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
 
     @Inject(method = "renderStringAtPos", at = @At("HEAD"), cancellable = true)
     private void minemoticon$renderWithEmojis(String text, boolean shadow, CallbackInfo ci) {
-        if (minemoticon$rendering) return;
-        if (ClientEmojiHandler.getFontStack() == null) return;
-        if (minemoticon$isSplashFontRenderer()) return;
-        if (!Minecraft.getMinecraft()
-            .func_152345_ab()) return;
+        if (!minemoticon$canRenderCompat()) return;
 
         ci.cancel();
+        minemoticon$renderStringAtPosCompat(text, shadow);
+    }
+
+    @Unique
+    private boolean minemoticon$canRenderCompat() {
+        return !minemoticon$rendering && ClientEmojiHandler.getFontStack() != null
+            && !minemoticon$isSplashFontRenderer()
+            && Minecraft.getMinecraft()
+                .func_152345_ab();
+    }
+
+    // Our renderStringAtPos. The compat draw calls it directly rather than through renderStringAtPos,
+    // which Hodgepodge wraps (@WrapMethod) to strip &u before any injector sees the text.
+    @Unique
+    private void minemoticon$renderStringAtPosCompat(String text, boolean shadow) {
         minemoticon$rendering = true;
         try {
             text = TextStyleCompat.normalize(text);
@@ -404,10 +433,11 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
         MinemoticonRunStyle style) {
         boolean textBold = minemoticon$usesTextBold(source, style.bold);
         GlyphCache cache = GlyphCache.forSource(source, textBold);
-        float[] uv = cache.getGlyphUV(codepoint);
-        float drawWidth = cache.getGlyphDrawWidth(codepoint) * source.getWidthScale();
+        int drawnGlyph = minemoticon$obfuscate(cache, codepoint, style);
+        float[] uv = cache.getGlyphUV(drawnGlyph);
+        float drawWidth = cache.getGlyphDrawWidth(drawnGlyph) * source.getWidthScale();
         float advance = cache.getGlyphAdvance(codepoint) * source.getWidthScale();
-        float xOffset = cache.getGlyphOffsetX(codepoint) * source.getWidthScale();
+        float xOffset = cache.getGlyphOffsetX(drawnGlyph) * source.getWidthScale();
         float displayHeight = source.getDisplayHeight();
         float verticalOffset = source.getVerticalOffset();
 
@@ -419,7 +449,10 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
         int color = minemoticon$colorForStyle(style, style.rainbowStart, style.gradientStart, shadow);
         float yOffset = style.wave ? minemoticon$waveOffset(style.visibleStart) : 0.0f;
         boolean syntheticBold = minemoticon$usesSyntheticBold(source, style.bold);
-        if (!shadow || source.usesTextColor()) {
+        float vTop = style.dinnerbone ? uv[3] : uv[1];
+        float vBottom = style.dinnerbone ? uv[1] : uv[3];
+        boolean hidden = minemoticon$hiddenInShadowPass(style, shadow);
+        if ((!shadow || source.usesTextColor()) && !hidden) {
             float x0 = this.posX + xOffset;
             float y0 = this.posY + yOffset + (8.0f - displayHeight) * 0.5f + verticalOffset;
             if (source.usesTextColor()) {
@@ -443,10 +476,10 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
 
             Tessellator tessellator = Tessellator.instance;
             tessellator.startDrawing(GL11.GL_TRIANGLE_STRIP);
-            tessellator.addVertexWithUV(x0, y0, 0.0, uv[0], uv[1]);
-            tessellator.addVertexWithUV(x0, y1, 0.0, uv[0], uv[3]);
-            tessellator.addVertexWithUV(x1, y0, 0.0, uv[2], uv[1]);
-            tessellator.addVertexWithUV(x1, y1, 0.0, uv[2], uv[3]);
+            tessellator.addVertexWithUV(x0, y0, 0.0, uv[0], vTop);
+            tessellator.addVertexWithUV(x0, y1, 0.0, uv[0], vBottom);
+            tessellator.addVertexWithUV(x1, y0, 0.0, uv[2], vTop);
+            tessellator.addVertexWithUV(x1, y1, 0.0, uv[2], vBottom);
             tessellator.draw();
 
             if (source.usesTextColor()) {
@@ -454,7 +487,7 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
             }
         }
 
-        if (source.usesTextColor() && syntheticBold) {
+        if (source.usesTextColor() && syntheticBold && !hidden) {
             float x0 = Math.round(this.posX + xOffset) + 1.0f;
             float y0 = Math.round(this.posY + yOffset + (8.0f - displayHeight) * 0.5f + verticalOffset);
             float x1 = x0 + drawWidth;
@@ -462,10 +495,10 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
 
             Tessellator tessellator = Tessellator.instance;
             tessellator.startDrawing(GL11.GL_TRIANGLE_STRIP);
-            tessellator.addVertexWithUV(x0, y0, 0.0, uv[0], uv[1]);
-            tessellator.addVertexWithUV(x0, y1, 0.0, uv[0], uv[3]);
-            tessellator.addVertexWithUV(x1, y0, 0.0, uv[2], uv[1]);
-            tessellator.addVertexWithUV(x1, y1, 0.0, uv[2], uv[3]);
+            tessellator.addVertexWithUV(x0, y0, 0.0, uv[0], vTop);
+            tessellator.addVertexWithUV(x0, y1, 0.0, uv[0], vBottom);
+            tessellator.addVertexWithUV(x1, y0, 0.0, uv[2], vTop);
+            tessellator.addVertexWithUV(x1, y1, 0.0, uv[2], vBottom);
             tessellator.draw();
         }
 
@@ -535,7 +568,7 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
             lineY = Math.round(lineY);
         }
 
-        boolean drawGlyphs = !shadow || source.usesTextColor();
+        boolean drawGlyphs = (!shadow || source.usesTextColor()) && !minemoticon$hiddenInShadowPass(style, shadow);
         Tessellator tessellator = Tessellator.instance;
         if (drawGlyphs) {
             Minecraft.getMinecraft()
@@ -545,7 +578,8 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
             GL11.glEnable(GL11.GL_BLEND);
             GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
             if (source.usesTextColor()) {
-                minemoticon$applyRenderColor(style.baseColor);
+                minemoticon$applyRenderColor(
+                    minemoticon$colorForStyle(style, style.rainbowStart, style.gradientStart, shadow));
             } else {
                 GL11.glColor4f(1.0f, 1.0f, 1.0f, this.alpha);
             }
@@ -558,9 +592,10 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
         int gradientIndex = style.gradientStart;
         for (int i = 0; i < run.length();) {
             int codepoint = run.codePointAt(i);
-            float[] uv = cache.getGlyphUV(codepoint);
-            float drawWidth = cache.getGlyphDrawWidth(codepoint) * widthScale;
-            float xOffset = cache.getGlyphOffsetX(codepoint) * widthScale;
+            int drawnGlyph = minemoticon$obfuscate(cache, codepoint, style);
+            float[] uv = cache.getGlyphUV(drawnGlyph);
+            float drawWidth = cache.getGlyphDrawWidth(drawnGlyph) * widthScale;
+            float xOffset = cache.getGlyphOffsetX(drawnGlyph) * widthScale;
             float penX = layout.getPenPosition(glyphIndex) * layoutScale * widthScale;
 
             if (drawGlyphs && uv != null) {
@@ -572,19 +607,22 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
                 float y0 = lineY + (style.wave ? minemoticon$waveOffset(visibleIndex) : 0.0f);
                 float x1 = x0 + drawWidth;
                 float y1 = y0 + displayHeight;
+                // &v: swapped texture rows draw the glyph upside down in its box
+                float vTop = style.dinnerbone ? uv[3] : uv[1];
+                float vBottom = style.dinnerbone ? uv[1] : uv[3];
 
-                tessellator.addVertexWithUV(x0, y0, 0.0, uv[0], uv[1]);
-                tessellator.addVertexWithUV(x0, y1, 0.0, uv[0], uv[3]);
-                tessellator.addVertexWithUV(x1, y1, 0.0, uv[2], uv[3]);
-                tessellator.addVertexWithUV(x1, y0, 0.0, uv[2], uv[1]);
+                tessellator.addVertexWithUV(x0, y0, 0.0, uv[0], vTop);
+                tessellator.addVertexWithUV(x0, y1, 0.0, uv[0], vBottom);
+                tessellator.addVertexWithUV(x1, y1, 0.0, uv[2], vBottom);
+                tessellator.addVertexWithUV(x1, y0, 0.0, uv[2], vTop);
 
                 if (source.usesTextColor() && minemoticon$usesSyntheticBold(source, style.bold)) {
                     float boldX0 = x0 + 1.0f;
                     float boldX1 = boldX0 + drawWidth;
-                    tessellator.addVertexWithUV(boldX0, y0, 0.0, uv[0], uv[1]);
-                    tessellator.addVertexWithUV(boldX0, y1, 0.0, uv[0], uv[3]);
-                    tessellator.addVertexWithUV(boldX1, y1, 0.0, uv[2], uv[3]);
-                    tessellator.addVertexWithUV(boldX1, y0, 0.0, uv[2], uv[1]);
+                    tessellator.addVertexWithUV(boldX0, y0, 0.0, uv[0], vTop);
+                    tessellator.addVertexWithUV(boldX0, y1, 0.0, uv[0], vBottom);
+                    tessellator.addVertexWithUV(boldX1, y1, 0.0, uv[2], vBottom);
+                    tessellator.addVertexWithUV(boldX1, y0, 0.0, uv[2], vTop);
                 }
             }
 
@@ -619,22 +657,50 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
 
     @Unique
     private float minemoticon$measureTextSegmentExact(String text) {
+        return minemoticon$measureTextSegmentExact(text, false, false, Integer.MAX_VALUE);
+    }
+
+    // Mirrors renderTextSegment in one pass, so bold carries across emojis and escapes like it does
+    // when drawn. Measuring the pieces between emojis separately restarted them all unbolded.
+    // stopAt: where in text to stop, as drawn with what follows it
+    @Unique
+    private float minemoticon$measureTextSegmentExact(String text, boolean matchEmoji, boolean initialBold,
+        int stopAt) {
         FontStack stack = ClientEmojiHandler.getFontStack();
         if (stack == null) {
-            return minemoticon$measureVanillaStringWidth(text);
+            return minemoticon$measureVanillaStringWidth(
+                text.substring(0, Math.min(stopAt, text.length())),
+                initialBold);
         }
 
         float width = 0.0f;
         var vanillaBuf = new StringBuilder();
         var customRunBuf = new StringBuilder();
         FontSource customRunSource = null;
-        boolean bold = false;
+        boolean bold = initialBold;
         int i = 0;
         while (i < text.length()) {
+            if (i >= stopAt) {
+                if (customRunBuf.length() > 0) {
+                    width += minemoticon$measureCustomRunBefore(
+                        customRunBuf.toString(),
+                        customRunSource,
+                        bold,
+                        text,
+                        i,
+                        matchEmoji);
+                    customRunBuf.setLength(0);
+                }
+                break;
+            }
             int tokenEnd = TextStyleCompat.tokenEnd(text, i);
-            if (tokenEnd > i) {
+            boolean token = tokenEnd > i;
+            EmojiRenderer.EscapeMatch escaped = !token && matchEmoji ? EmojiRenderer.matchEscapeAt(text, i) : null;
+            EmojiRenderer.EmojiMatch emoji = !token && escaped == null && matchEmoji ? EmojiRenderer.matchAt(text, i)
+                : null;
+            if (token || escaped != null || emoji != null) {
                 if (vanillaBuf.length() > 0) {
-                    width += minemoticon$measureVanillaStringWidth(vanillaBuf.toString());
+                    width += minemoticon$measureVanillaStringWidth(vanillaBuf.toString(), bold);
                     vanillaBuf.setLength(0);
                 }
                 if (customRunBuf.length() > 0) {
@@ -642,6 +708,8 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
                     customRunBuf.setLength(0);
                     customRunSource = null;
                 }
+            }
+            if (token) {
                 char code = Character.toLowerCase(text.charAt(i + 1));
                 int format = minemoticon$getFormattingIndex(code);
                 if (format >= 0 && format < 16) {
@@ -652,6 +720,23 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
                     bold = false;
                 }
                 i = tokenEnd;
+                continue;
+            }
+            if (escaped != null) {
+                if (escaped.getNextIndex() > stopAt) {
+                    break;
+                }
+                // Drawn as its literal text, see renderTextSegment
+                width += minemoticon$measureTextSegmentExact(escaped.getLiteralText(), false, bold, Integer.MAX_VALUE);
+                i = escaped.getNextIndex();
+                continue;
+            }
+            if (emoji != null) {
+                if (i + emoji.getLength() > stopAt) {
+                    break;
+                }
+                width += EmojiRenderer.EMOJI_SIZE;
+                i += emoji.getLength();
                 continue;
             }
 
@@ -671,7 +756,7 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
                 vanillaBuf.append(text, i, i + charCount);
             } else if (isTextRunSource) {
                 if (vanillaBuf.length() > 0) {
-                    width += minemoticon$measureVanillaStringWidth(vanillaBuf.toString());
+                    width += minemoticon$measureVanillaStringWidth(vanillaBuf.toString(), bold);
                     vanillaBuf.setLength(0);
                 }
                 if (customRunSource != source && customRunBuf.length() > 0) {
@@ -682,7 +767,7 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
                 customRunBuf.append(text, i, i + charCount);
             } else {
                 if (vanillaBuf.length() > 0) {
-                    width += minemoticon$measureVanillaStringWidth(vanillaBuf.toString());
+                    width += minemoticon$measureVanillaStringWidth(vanillaBuf.toString(), bold);
                     vanillaBuf.setLength(0);
                 }
                 if (customRunBuf.length() > 0) {
@@ -708,7 +793,7 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
             width += minemoticon$measureCustomTextRunExact(customRunBuf.toString(), customRunSource, bold);
         }
         if (vanillaBuf.length() > 0) {
-            width += minemoticon$measureVanillaStringWidth(vanillaBuf.toString());
+            width += minemoticon$measureVanillaStringWidth(vanillaBuf.toString(), bold);
         }
 
         return width;
@@ -748,6 +833,39 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
         return width;
     }
 
+    // The run's width up to where the text after it continues it. It's drawn as one layout with that
+    // continuation, so kerning against the next glyph moves where the next glyph starts.
+    @Unique
+    private float minemoticon$measureCustomRunBefore(String run, FontSource source, boolean bold, String text, int from,
+        boolean matchEmoji) {
+        FontStack stack = ClientEmojiHandler.getFontStack();
+        int end = from;
+        while (stack != null && end < text.length()) {
+            if (TextStyleCompat.tokenEnd(text, end) > end) break;
+            if (matchEmoji
+                && (EmojiRenderer.matchEscapeAt(text, end) != null || EmojiRenderer.matchAt(text, end) != null)) {
+                break;
+            }
+            int codepoint = text.codePointAt(end);
+            if (stack.resolve(codepoint) != source) break;
+            end += Character.charCount(codepoint);
+        }
+        if (end == from) {
+            return minemoticon$measureCustomTextRunExact(run, source, bold);
+        }
+
+        String drawnRun = run + text.substring(from, end);
+        boolean textBold = minemoticon$usesTextBold(source, bold);
+        GlyphCache cache = GlyphCache.forSource(source, textBold);
+        TextRunLayout layout = source.layoutTextRun(drawnRun, cache.getRenderSize(), textBold);
+        if (layout == null || layout.getGlyphCount() != drawnRun.codePointCount(0, drawnRun.length())) {
+            return minemoticon$measureCustomTextRunExact(run, source, bold);
+        }
+        return layout.getPenPosition(run.codePointCount(0, run.length())) * source.getDisplayHeight()
+            / cache.getRenderSize()
+            * source.getWidthScale();
+    }
+
     @Unique
     private boolean minemoticon$usesSyntheticBold(FontSource source, boolean bold) {
         return bold && !minemoticon$isTextRunSource(source);
@@ -765,30 +883,23 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
         }
 
         text = TextStyleCompat.normalize(text);
-        var segments = EmojiRenderer.parse(text);
-        if (segments == null) {
-            return minemoticon$measureTextSegmentExact(text);
-        }
-
-        float width = 0.0f;
-        for (Object seg : segments) {
-            if (seg instanceof RenderableEmoji) {
-                width += EmojiRenderer.EMOJI_SIZE;
-            } else {
-                width += minemoticon$measureTextSegmentExact((String) seg);
-            }
-        }
-        return width;
+        // parse() is cached, so text without emojis or escapes skips matching them per character
+        return minemoticon$measureTextSegmentExact(text, EmojiRenderer.parse(text) != null, false, Integer.MAX_VALUE);
     }
 
     @Unique
     private int minemoticon$measureVanillaStringWidth(String text) {
+        return minemoticon$measureVanillaStringWidth(text, false);
+    }
+
+    // bold: the style already active where text starts. Runs carry no codes, so it can't be read from them.
+    @Unique
+    private int minemoticon$measureVanillaStringWidth(String text, boolean bold) {
         if (text == null) {
             return 0;
         }
 
         int width = 0;
-        boolean bold = false;
 
         for (int i = 0; i < text.length(); ++i) {
             char c0 = text.charAt(i);
@@ -976,6 +1087,15 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
         return Minecraft.getMinecraft().currentScreen instanceof GuiMainMenu && y < 0;
     }
 
+    // &k for custom fonts: vanilla only scrambles its own bitmap glyphs
+    @Unique
+    private int minemoticon$obfuscate(GlyphCache cache, int codepoint, MinemoticonRunStyle style) {
+        if (!style.random || Character.isWhitespace(codepoint)) {
+            return codepoint;
+        }
+        return cache.randomGlyphLike(codepoint, minemoticon$OBFUSCATION_RANDOM);
+    }
+
     @Unique
     private void minemoticon$flushVanillaText(StringBuilder vanillaBuf, boolean shadow) {
         minemoticon$flushVanillaText(vanillaBuf, shadow, minemoticon$captureRunStyle());
@@ -990,14 +1110,22 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
             style = minemoticon$captureRunStyle();
         }
 
+        String hiddenRun = vanillaBuf.toString();
+        if (minemoticon$hiddenInShadowPass(style, shadow)) {
+            // Only the pen moves, by what the run would have drawn
+            this.posX += minemoticon$measureVanillaStringWidth(hiddenRun, this.boldStyle);
+            return;
+        }
+
         boolean swanSongBatchStarted = minemoticon$beginSwanSongTextBatch();
         minemoticon$bindVanillaFontTexture();
         try {
-            String run = vanillaBuf.toString();
+            String run = hiddenRun;
             if (!style.hasPerGlyphEffect()) {
-                minemoticon$applyRenderColor(style.baseColor);
-                minemoticon$applySwanSongTextColor(style.baseColor);
-                this.renderStringAtPos(run, shadow);
+                int color = minemoticon$colorForStyle(style, style.rainbowStart, style.gradientStart, shadow);
+                minemoticon$applyRenderColor(color);
+                minemoticon$applySwanSongTextColor(color);
+                minemoticon$renderVanillaRun(run, shadow, style);
                 return;
             }
 
@@ -1013,7 +1141,7 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
                 minemoticon$applySwanSongTextColor(color);
                 this.posY += yOffset;
                 try {
-                    this.renderStringAtPos(run.substring(i, i + charCount), shadow);
+                    minemoticon$renderVanillaRun(run.substring(i, i + charCount), shadow, style);
                 } finally {
                     this.posY -= yOffset;
                 }
@@ -1037,8 +1165,11 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
         MinemoticonRunStyle style = minemoticon$captureRunStyle();
         float yOffset = style.wave ? minemoticon$waveOffset(style.visibleStart) : 0.0f;
         if (!shadow) {
-            minemoticon$emojiBatch
-                .add(emoji.getEmoji(), this.posX, this.posY + minemoticon$INLINE_EMOJI_Y_OFFSET + yOffset);
+            minemoticon$emojiBatch.add(
+                emoji.getEmoji(),
+                this.posX,
+                this.posY + minemoticon$INLINE_EMOJI_Y_OFFSET + yOffset,
+                style.dinnerbone);
         }
         this.posX += EmojiRenderer.EMOJI_SIZE;
         minemoticon$advanceVisibleStyle();
@@ -1049,6 +1180,9 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
         this.minemoticon$rainbowStyle = false;
         this.minemoticon$waveStyle = false;
         this.minemoticon$gradientStyle = false;
+        this.minemoticon$extraShadowStyle = false;
+        this.minemoticon$shadowColorOverride = -1;
+        this.minemoticon$dinnerboneStyle = false;
         this.minemoticon$gradientCharIndex = 0;
         this.minemoticon$gradientTotalChars = 0;
         this.minemoticon$rainbowCharIndex = 0;
@@ -1070,7 +1204,11 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
             this.minemoticon$gradientCharIndex,
             this.minemoticon$gradientTotalChars,
             this.minemoticon$gradientStartRgb,
-            this.minemoticon$gradientEndRgb);
+            this.minemoticon$gradientEndRgb,
+            this.minemoticon$extraShadowStyle,
+            this.minemoticon$shadowColorOverride,
+            this.minemoticon$dinnerboneStyle,
+            this.randomStyle);
     }
 
     @Unique
@@ -1124,7 +1262,23 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
             return;
         }
 
+        if (code == 'u') {
+            // Alone it toggles; with a &x payload it turns the shadow on in that color
+            int rgb = TextStyleCompat.parseSectionXAt(text, tokenStart + 2);
+            if (rgb >= 0) {
+                this.minemoticon$extraShadowStyle = true;
+                this.minemoticon$shadowColorOverride = rgb;
+            } else {
+                this.minemoticon$extraShadowStyle = !this.minemoticon$extraShadowStyle;
+                if (!this.minemoticon$extraShadowStyle) {
+                    this.minemoticon$shadowColorOverride = -1;
+                }
+            }
+            return;
+        }
+
         if (code == 'v') {
+            this.minemoticon$dinnerboneStyle = !this.minemoticon$dinnerboneStyle;
             return;
         }
 
@@ -1174,7 +1328,22 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
         if (style == null) {
             return this.minemoticon$currentRenderColor;
         }
+        int color = minemoticon$effectColor(style, rainbowIndex, gradientIndex, shadow);
+        if (!shadow) {
+            return color;
+        }
+        return style.shadowColor >= 0 ? color & 0xFF000000 | style.shadowColor : color;
+    }
 
+    // &u: a shadow pass that only exists for &u spans draws nothing else
+    @Unique
+    private boolean minemoticon$hiddenInShadowPass(MinemoticonRunStyle style, boolean shadow) {
+        return shadow && this.minemoticon$extraShadowPassOnly && !style.extraShadow;
+    }
+
+    @Unique
+    private int minemoticon$effectColor(MinemoticonRunStyle style, int rainbowIndex, int gradientIndex,
+        boolean shadow) {
         if (!style.rainbow && !style.gradient) {
             return style.baseColor;
         }
@@ -1429,11 +1598,53 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
             this.minemoticon$rainbowStyle = false;
             this.minemoticon$waveStyle = false;
             this.minemoticon$gradientStyle = false;
+            this.minemoticon$extraShadowStyle = false;
+            this.minemoticon$shadowColorOverride = -1;
+            this.minemoticon$dinnerboneStyle = false;
             this.minemoticon$rainbowCharIndex = 0;
             this.minemoticon$gradientCharIndex = 0;
             this.minemoticon$currentRenderColor = this.minemoticon$baseRenderColor;
             minemoticon$applyRenderColor(this.minemoticon$currentRenderColor);
         }
+    }
+
+    // &v flips the run upside down in place, like Angelica's dinnerbone quads. Underline and
+    // strikethrough stay put, so they're drawn separately, unflipped.
+    @Unique
+    private void minemoticon$renderVanillaRun(String run, boolean shadow, MinemoticonRunStyle style) {
+        if (!style.dinnerbone) {
+            this.renderStringAtPos(run, shadow);
+            return;
+        }
+
+        boolean underline = this.underlineStyle;
+        boolean strikethrough = this.strikethroughStyle;
+        float startX = this.posX;
+        float middle = this.posY + (this.FONT_HEIGHT - 1) / 2.0f;
+        this.underlineStyle = false;
+        this.strikethroughStyle = false;
+        // Mirroring reverses the quads' winding, so culling would drop every glyph
+        boolean cullWasEnabled = GL11.glIsEnabled(GL11.GL_CULL_FACE);
+        GL11.glDisable(GL11.GL_CULL_FACE);
+        GL11.glPushMatrix();
+        try {
+            GL11.glTranslatef(0.0f, middle, 0.0f);
+            GL11.glScalef(1.0f, -1.0f, 1.0f);
+            GL11.glTranslatef(0.0f, -middle, 0.0f);
+            this.renderStringAtPos(run, shadow);
+        } finally {
+            GL11.glPopMatrix();
+            if (cullWasEnabled) {
+                GL11.glEnable(GL11.GL_CULL_FACE);
+            }
+            this.underlineStyle = underline;
+            this.strikethroughStyle = strikethrough;
+        }
+
+        float endX = this.posX;
+        this.posX = startX;
+        minemoticon$drawDecorationLines(endX - startX, 0.0f, style);
+        this.posX = endX;
     }
 
     @Unique
@@ -1495,10 +1706,15 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
         private final int gradientTotal;
         private final int gradientStartRgb;
         private final int gradientEndRgb;
+        private final boolean extraShadow;
+        private final int shadowColor;
+        private final boolean dinnerbone;
+        private final boolean random;
 
         private MinemoticonRunStyle(int baseColor, boolean wave, boolean rainbow, boolean gradient, boolean bold,
             boolean underline, boolean strikethrough, int visibleStart, int rainbowStart, int gradientStart,
-            int gradientTotal, int gradientStartRgb, int gradientEndRgb) {
+            int gradientTotal, int gradientStartRgb, int gradientEndRgb, boolean extraShadow, int shadowColor,
+            boolean dinnerbone, boolean random) {
             this.baseColor = baseColor;
             this.wave = wave;
             this.rainbow = rainbow;
@@ -1512,6 +1728,10 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
             this.gradientTotal = gradientTotal;
             this.gradientStartRgb = gradientStartRgb;
             this.gradientEndRgb = gradientEndRgb;
+            this.extraShadow = extraShadow;
+            this.shadowColor = shadowColor;
+            this.dinnerbone = dinnerbone;
+            this.random = random;
         }
 
         private boolean hasPerGlyphEffect() {
@@ -1532,11 +1752,25 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
                 gradientStart,
                 gradientTotal,
                 gradientStartRgb,
-                gradientEndRgb);
+                gradientEndRgb,
+                extraShadow,
+                shadowColor,
+                dinnerbone,
+                random);
         }
     }
 
     // --- Compat helpers ---
+
+    @Unique
+    private static boolean minemoticon$hasShadowCode(String text) {
+        String normalized = TextStyleCompat.normalize(text);
+        for (int i = normalized.indexOf(TextStyleCompat.FORMAT); i >= 0
+            && i + 1 < normalized.length(); i = normalized.indexOf(TextStyleCompat.FORMAT, i + 1)) {
+            if (Character.toLowerCase(normalized.charAt(i + 1)) == 'u') return true;
+        }
+        return false;
+    }
 
     @Unique
     private int minemoticon$drawStringVanillaCompat(String text, int x, int y, int color, boolean dropShadow) {
@@ -1549,6 +1783,15 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
             return Math.max(shadowWidth, normalWidth);
         }
 
+        // &u adds a shadow to its spans of unshadowed text, like Angelica's per-glyph shadow
+        if (minemoticon$hasShadowCode(text)) {
+            this.minemoticon$extraShadowPassOnly = true;
+            try {
+                minemoticon$renderStringVanillaCompat(text, x + 1, y + 1, color, true);
+            } finally {
+                this.minemoticon$extraShadowPassOnly = false;
+            }
+        }
         return minemoticon$renderStringVanillaCompat(text, x, y, color, false);
     }
 
@@ -1560,6 +1803,23 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
     @Override
     public int minemoticon$getStringWidthCompatDirect(String text) {
         return (int) Math.ceil(minemoticon$measureCompatWidthExact(text));
+    }
+
+    @Override
+    public boolean minemoticon$usesCompatRendering(String text) {
+        return minemoticon$shouldUseCompatString(text);
+    }
+
+    @Override
+    public float minemoticon$getCaretOffsetCompatDirect(String text, int index) {
+        if (text == null || index <= 0) {
+            return 0.0f;
+        }
+        // index counts the typed & codes, which normalizing turns into longer section sign tokens
+        int stopAt = TextStyleCompat.normalize(text.substring(0, Math.min(index, text.length())))
+            .length();
+        String normalized = TextStyleCompat.normalize(text);
+        return minemoticon$measureTextSegmentExact(normalized, EmojiRenderer.parse(normalized) != null, false, stopAt);
     }
 
     @Unique
@@ -1588,7 +1848,11 @@ public abstract class MixinFontRenderer implements FontRendererEmojiCompat {
         GL11.glColor4f(this.red, this.blue, this.green, this.alpha);
         this.posX = x;
         this.posY = y;
-        this.renderStringAtPos(text, dropShadow);
+        if (minemoticon$canRenderCompat()) {
+            minemoticon$renderStringAtPosCompat(text, dropShadow);
+        } else {
+            this.renderStringAtPos(text, dropShadow);
+        }
         return (int) this.posX;
     }
 }

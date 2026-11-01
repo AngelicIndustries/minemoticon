@@ -5,8 +5,11 @@ import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
 import javax.imageio.ImageIO;
@@ -29,6 +32,7 @@ public class GlyphCache {
     private static final float DEFAULT_DISPLAY_HEIGHT = 8.0f;
     private static final int INITIAL_SIZE = 512;
     private static final int MAX_SIZE = 2048;
+    private static final String OBFUSCATION_CANDIDATES = "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
 
     private final FontSource source;
     private final boolean textBold;
@@ -50,6 +54,8 @@ public class GlyphCache {
     private final Map<Integer, Float> xOffsetMap = new HashMap<>();
     // Track which codepoints are actively being rasterized to avoid duplicate work
     private final ConcurrentHashMap<Integer, Boolean> pendingRenders = new ConcurrentHashMap<>();
+    // Half-pixel advance bucket -> printable glyphs with that advance, built on first use
+    private Map<Integer, int[]> obfuscationGroups;
 
     private GlyphAtlasTexture texture;
     private boolean registered = false;
@@ -129,6 +135,37 @@ public class GlyphCache {
     }
 
     // Returns the advance width of this glyph in display pixels.
+    // &k: a random glyph from this font with about the same advance, like vanilla obfuscated text.
+    // Callers keep the original glyph's advance, so layout never changes.
+    public int randomGlyphLike(int codepoint, Random random) {
+        if (obfuscationGroups == null) {
+            obfuscationGroups = buildObfuscationGroups();
+        }
+        int[] group = obfuscationGroups.get(advanceBucket(getGlyphAdvance(codepoint)));
+        return group == null ? codepoint : group[random.nextInt(group.length)];
+    }
+
+    private Map<Integer, int[]> buildObfuscationGroups() {
+        Map<Integer, List<Integer>> groups = new HashMap<>();
+        for (char c : OBFUSCATION_CANDIDATES.toCharArray()) {
+            if (getGlyphUV(c) == null) continue;
+            groups.computeIfAbsent(advanceBucket(getGlyphAdvance(c)), k -> new ArrayList<>())
+                .add((int) c);
+        }
+        Map<Integer, int[]> result = new HashMap<>();
+        groups.forEach(
+            (bucket, glyphs) -> result.put(
+                bucket,
+                glyphs.stream()
+                    .mapToInt(Integer::intValue)
+                    .toArray()));
+        return result;
+    }
+
+    private static int advanceBucket(float advance) {
+        return Math.round(advance * 2.0f);
+    }
+
     public float getGlyphAdvance(int codepoint) {
         Float explicitAdvance = advanceMap.get(codepoint);
         if (explicitAdvance != null) return explicitAdvance;
