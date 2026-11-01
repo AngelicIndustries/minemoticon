@@ -13,10 +13,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.function.BiConsumer;
 
 import net.minecraft.client.Minecraft;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import industries.angelic.minemoticon.api.Emoji;
@@ -444,14 +446,16 @@ public class ClientEmojiHandler {
                         obj.get("category")
                             .getAsString()))
                         continue;
-                    String unified = obj.get("unified")
-                        .getAsString();
-                    int[] codepoints = java.util.Arrays.stream(unified.split("-"))
-                        .mapToInt(hex -> Integer.parseInt(hex, 16))
-                        .toArray();
-                    if (codepoints.length > 0 && pickFontForGlyph(codepoints) != null) {
-                        glyphEntries.add(new AtlasBuilder.GlyphEntry(unified, codepoints));
-                    }
+                    addAtlasGlyph(
+                        obj.get("unified")
+                            .getAsString(),
+                        glyphEntries);
+                    forEachSkinVariation(
+                        obj,
+                        (tones, variation) -> addAtlasGlyph(
+                            variation.get("unified")
+                                .getAsString(),
+                            glyphEntries));
                 }
                 // Pass both fonts to atlas builder -- it tries primary first, falls back to bundled
                 emojiAtlas = AtlasBuilder.loadOrBuild(
@@ -482,50 +486,12 @@ public class ClientEmojiHandler {
                     .getAsString();
                 String unified = obj.get("unified")
                     .getAsString();
-                String unicodeStr = unifiedToString(unified);
 
                 int[] codepoints = java.util.Arrays.stream(unified.split("-"))
                     .mapToInt(hex -> Integer.parseInt(hex, 16))
                     .toArray();
 
-                ColorFont renderFont = codepoints.length > 0 ? pickFontForGlyph(codepoints) : null;
-                ColorFont primaryFont = codepoints.length > 0 ? pickPrimaryFontForGlyph(codepoints) : null;
-                ColorFont fallbackFont = codepoints.length > 0 ? pickFallbackFontForGlyph(codepoints, primaryFont)
-                    : null;
-
-                Emoji emoji;
-                if (useAtlas && renderFont != null) {
-                    var atlasEmoji = new EmojiFromAtlas(emojiAtlas, unified);
-                    atlasEmoji.name = emojiName;
-                    atlasEmoji.location = location;
-                    atlasEmoji.sort = sort;
-                    atlasEmoji.category = category;
-                    atlasEmoji.unicodeString = unicodeStr;
-                    emoji = atlasEmoji;
-                } else if (primaryFont != null || fallbackFont != null) {
-                    var cdnFallback = new EmojiFromTwitmoji();
-                    cdnFallback.name = emojiName;
-                    cdnFallback.location = location;
-                    cdnFallback.sort = sort;
-                    cdnFallback.category = category;
-                    cdnFallback.unicodeString = unicodeStr;
-
-                    var fontEmoji = new EmojiFromFont(primaryFont, fallbackFont, cdnFallback, codepoints);
-                    fontEmoji.name = emojiName;
-                    fontEmoji.location = location;
-                    fontEmoji.sort = sort;
-                    fontEmoji.category = category;
-                    fontEmoji.unicodeString = unicodeStr;
-                    emoji = fontEmoji;
-                } else {
-                    var cdnEmoji = new EmojiFromTwitmoji();
-                    cdnEmoji.name = emojiName;
-                    cdnEmoji.location = location;
-                    cdnEmoji.sort = sort;
-                    cdnEmoji.category = category;
-                    cdnEmoji.unicodeString = unicodeStr;
-                    emoji = cdnEmoji;
-                }
+                Emoji emoji = createStockEmoji(unified, emojiName, location, sort, category, codepoints, useAtlas);
 
                 obj.get("short_names")
                     .getAsJsonArray()
@@ -549,6 +515,23 @@ public class ClientEmojiHandler {
 
                 registerUnicode(unified, emoji);
 
+                // Skin tone variants render and match in text, but stay out of the picker and shortcodes
+                forEachSkinVariation(obj, (tones, variation) -> {
+                    String variantUnified = variation.get("unified")
+                        .getAsString();
+                    Emoji variant = createStockEmoji(
+                        variantUnified,
+                        emojiName,
+                        variation.get("image")
+                            .getAsString(),
+                        sort,
+                        category,
+                        toCodepoints(variantUnified),
+                        useAtlas);
+                    variant.strings.add(":" + emojiName + ":" + skinToneShortcodes(tones));
+                    registerUnicode(variantUnified, variant);
+                });
+
                 EMOJI_MAP.computeIfAbsent(emoji.category, k -> new ArrayList<>())
                     .add(emoji);
                 EMOJI_LIST.add(emoji);
@@ -567,6 +550,75 @@ public class ClientEmojiHandler {
             error = true;
             Minemoticon.LOG.error("Failed to parse twemoji data", e);
         }
+    }
+
+    private static Emoji createStockEmoji(String unified, String name, String location, int sort, String category,
+        int[] codepoints, boolean useAtlas) {
+        String unicodeStr = unifiedToString(unified);
+        ColorFont renderFont = codepoints.length > 0 ? pickFontForGlyph(codepoints) : null;
+        ColorFont primaryFont = codepoints.length > 0 ? pickPrimaryFontForGlyph(codepoints) : null;
+        ColorFont fallbackFont = codepoints.length > 0 ? pickFallbackFontForGlyph(codepoints, primaryFont) : null;
+
+        Emoji emoji;
+        if (useAtlas && renderFont != null) {
+            emoji = new EmojiFromAtlas(emojiAtlas, unified);
+        } else if (primaryFont != null || fallbackFont != null) {
+            var cdnFallback = new EmojiFromTwitmoji();
+            cdnFallback.name = name;
+            cdnFallback.location = location;
+            cdnFallback.sort = sort;
+            cdnFallback.category = category;
+            cdnFallback.unicodeString = unicodeStr;
+            emoji = new EmojiFromFont(primaryFont, fallbackFont, cdnFallback, codepoints);
+        } else {
+            emoji = new EmojiFromTwitmoji();
+        }
+        emoji.name = name;
+        emoji.location = location;
+        emoji.sort = sort;
+        emoji.category = category;
+        emoji.unicodeString = unicodeStr;
+        return emoji;
+    }
+
+    private static void addAtlasGlyph(String unified, List<AtlasBuilder.GlyphEntry> glyphEntries) {
+        int[] codepoints = toCodepoints(unified);
+        if (codepoints.length > 0 && pickFontForGlyph(codepoints) != null) {
+            glyphEntries.add(new AtlasBuilder.GlyphEntry(unified, codepoints));
+        }
+    }
+
+    // emoji-data lists skin tone variants (thumbs up + medium skin tone, ...) under their base emoji,
+    // keyed by the tone modifiers they use ("1F3FD", or "1F3FB-1F3FC" for two people)
+    private static void forEachSkinVariation(JsonObject obj, BiConsumer<String, JsonObject> action) {
+        JsonElement variations = obj.get("skin_variations");
+        if (variations == null || !variations.isJsonObject()) return;
+        for (Map.Entry<String, JsonElement> entry : variations.getAsJsonObject()
+            .entrySet()) {
+            JsonObject variation = entry.getValue()
+                .getAsJsonObject();
+            if (variation.get("has_img_twitter")
+                .getAsBoolean()) {
+                action.accept(entry.getKey(), variation);
+            }
+        }
+    }
+
+    // Slack style names: 1F3FB..1F3FF are :skin-tone-2: .. :skin-tone-6:
+    private static String skinToneShortcodes(String tones) {
+        var sb = new StringBuilder();
+        for (String tone : tones.split("-")) {
+            sb.append(":skin-tone-")
+                .append(Integer.parseInt(tone, 16) - 0x1F3FB + 2)
+                .append(':');
+        }
+        return sb.toString();
+    }
+
+    private static int[] toCodepoints(String unified) {
+        return java.util.Arrays.stream(unified.split("-"))
+            .mapToInt(hex -> Integer.parseInt(hex, 16))
+            .toArray();
     }
 
     private static boolean shouldUseAtlas() {

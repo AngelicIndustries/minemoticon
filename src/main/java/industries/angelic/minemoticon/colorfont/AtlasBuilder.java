@@ -22,10 +22,12 @@ import industries.angelic.minemoticon.api.DownloadedTexture;
 
 public class AtlasBuilder {
 
-    private static final String ATLAS_RENDER_VERSION = "v5";
-    private static final int CELL_SIZE = 128;
-    private static final int RENDER_SIZE = 256; // 2x supersample
-    private static final int COLS = 48;
+    private static final String ATLAS_RENDER_VERSION = "v6";
+    // Emojis display at 10 GUI pixels, so 64px cells cover GUI scale 6. With skin tone variants there
+    // are ~3800 glyphs: 64 columns keep the atlas at 4096 wide and under 4096 tall (~62MB RGBA).
+    private static final int CELL_SIZE = 64;
+    private static final int RENDER_SIZE = 128; // 2x supersample
+    private static final int COLS = 64;
 
     public static class GlyphEntry {
 
