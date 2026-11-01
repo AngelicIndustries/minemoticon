@@ -1,10 +1,15 @@
 package industries.angelic.minemoticon.freetype;
 
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +23,7 @@ import com.mlomb.freetypejni.Kerning;
 import com.mlomb.freetypejni.Library;
 
 import industries.angelic.minemoticon.Minemoticon;
+import industries.angelic.minemoticon.colorfont.AtlasBuilder;
 import industries.angelic.minemoticon.colorfont.VariationAxis;
 import industries.angelic.minemoticon.font.TextRunLayout;
 
@@ -392,22 +398,54 @@ public class FreeTypeRenderer implements AutoCloseable {
                 return false;
             }
 
+            var bytes = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) bytes.write(buf, 0, n);
+
             File tmpDir = new File(System.getProperty("java.io.tmpdir"), "minemoticon-natives");
             tmpDir.mkdirs();
-            File tmpFile = new File(tmpDir, libName);
+            File libFile = extractNative(tmpDir, libName, bytes.toByteArray());
 
-            try (var out = new FileOutputStream(tmpFile)) {
-                byte[] buf = new byte[8192];
-                int n;
-                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-            }
-
-            System.load(tmpFile.getAbsolutePath());
+            System.load(libFile.getAbsolutePath());
             nativeLoaded = true;
             Minemoticon.debug("Loaded FreeType native from {}", resourcePath);
             return true;
         } catch (Throwable e) {
             Minemoticon.debug("Failed to load FreeType native: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Never rewrites the native in place: truncating a .so that another running game has mapped
+     * drops that process's relocated GOT, and its next FreeType call jumps to an unrelocated PLT
+     * address. Files are named by content hash and only ever appear via atomic rename.
+     */
+    private static File extractNative(File dir, String libName, byte[] bytes) throws IOException {
+        int dot = libName.lastIndexOf('.');
+        String hash = AtlasBuilder.sha1(bytes)
+            .substring(0, 16);
+        File target = new File(dir, libName.substring(0, dot) + "-" + hash + libName.substring(dot));
+        if (hasContent(target, bytes)) return target;
+
+        Path tmp = Files.createTempFile(dir.toPath(), libName, ".tmp");
+        try {
+            Files.write(tmp, bytes);
+            Files.move(tmp, target.toPath(), StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            // Windows refuses to replace a DLL another instance already extracted and loaded
+            if (!hasContent(target, bytes)) throw e;
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
+        return target;
+    }
+
+    private static boolean hasContent(File file, byte[] bytes) {
+        try {
+            return file.length() == bytes.length && Arrays.equals(Files.readAllBytes(file.toPath()), bytes);
+        } catch (IOException e) {
             return false;
         }
     }
