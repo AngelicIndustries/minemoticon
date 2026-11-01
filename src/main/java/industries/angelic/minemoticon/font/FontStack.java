@@ -75,6 +75,18 @@ public class FontStack {
         return null;
     }
 
+    // Font hash of getEmojiFallbackFont()'s source, for atlas cache keying.
+    public String getEmojiFallbackFontHash() {
+        boolean foundFirst = false;
+        for (FontSource source : enabled) {
+            if (source.getColorFont() != null) {
+                if (foundFirst) return source.getFontHash();
+                foundFirst = true;
+            }
+        }
+        return null;
+    }
+
     // Returns the font hash of the primary emoji font, for atlas cache keying.
     public String getEmojiFontHash() {
         for (FontSource source : enabled) {

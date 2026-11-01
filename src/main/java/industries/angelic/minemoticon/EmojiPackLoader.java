@@ -16,8 +16,6 @@ import industries.angelic.angellib.util.FileUtil;
 
 public class EmojiPackLoader {
 
-    public static final File PACKS_FOLDER = new File("config/minemoticon/packs");
-    public static final File SERVER_PACKS_FOLDER = new File("config/minemoticon/server_packs");
     private static final String[] SUPPORTED_EXTENSIONS = { ".png", ".jpg", ".jpeg", ".gif", ".qoi", ".webp" };
 
     public static class PackMeta {
@@ -63,11 +61,11 @@ public class EmojiPackLoader {
     }
 
     public static List<PackData> loadPacks() {
-        return loadFromFolder(PACKS_FOLDER);
+        return loadFromFolder(getPacksFolder());
     }
 
     public static List<PackData> loadServerPacks() {
-        return loadFromFolder(SERVER_PACKS_FOLDER);
+        return loadFromFolder(getServerPacksFolder());
     }
 
     private static List<PackData> loadFromFolder(File folder) {
@@ -200,6 +198,10 @@ public class EmojiPackLoader {
     }
 
     public static File getPacksFolder() {
-        return PACKS_FOLDER;
+        return new File(Minemoticon.configDir(), "packs");
+    }
+
+    private static File getServerPacksFolder() {
+        return new File(Minemoticon.configDir(), "server_packs");
     }
 }

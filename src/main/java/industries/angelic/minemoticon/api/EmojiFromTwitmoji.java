@@ -18,7 +18,7 @@ public class EmojiFromTwitmoji extends Emoji implements RenderableEmoji {
     public void checkLoad() {
         if (texture != null) return;
 
-        var cacheFile = new File("minemoticon/cache/" + name + "-" + version);
+        var cacheFile = new File(Minecraft.getMinecraft().mcDataDir, "minemoticon/cache/" + name + "-" + version);
         var url = TWEMOJI_CDN + location;
 
         texture = new DownloadedTexture(cacheFile, url);

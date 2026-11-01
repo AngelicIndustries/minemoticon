@@ -1,5 +1,7 @@
 package industries.angelic.minemoticon;
 
+import java.io.File;
+
 import net.minecraft.util.ResourceLocation;
 
 import org.apache.logging.log4j.LogManager;
@@ -43,6 +45,15 @@ public class Minemoticon {
 
     public static boolean isDebugMode() {
         return DEBUG_MODE || EmojiConfig.debugMode;
+    }
+
+    // <game dir>/config/minemoticon. The working directory isn't always the game dir, and
+    // FML sets its config dir during loading, so callers resolve this on use.
+    public static File configDir() {
+        return new File(
+            Loader.instance()
+                .getConfigDir(),
+            MODID);
     }
 
     public static void debug(String message, Object... args) {

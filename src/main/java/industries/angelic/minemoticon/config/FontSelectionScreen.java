@@ -234,7 +234,7 @@ public class FontSelectionScreen extends GuiScreen implements DropListener {
         if (button.id == BTN_ADD_FONT) {
             addFontFromPicker();
         } else if (button.id == BTN_OPEN_FOLDER) {
-            FileUtil.openFolder(ClientEmojiHandler.FONTS_DIR);
+            FileUtil.openFolder(ClientEmojiHandler.getFontsDir());
         } else if (button.id == BTN_DONE) {
             applyAndClose();
         }
@@ -449,7 +449,7 @@ public class FontSelectionScreen extends GuiScreen implements DropListener {
 
     private void removeFont(FontEntry entry) {
         if (!entry.canRemove()) return;
-        File file = new File(ClientEmojiHandler.FONTS_DIR, entry.source.getId());
+        File file = new File(ClientEmojiHandler.getFontsDir(), entry.source.getId());
         try {
             Files.deleteIfExists(file.toPath());
         } catch (IOException e) {
@@ -715,7 +715,7 @@ public class FontSelectionScreen extends GuiScreen implements DropListener {
         if (!preview.tryRequestLoad()) return;
 
         if (source instanceof CustomFontSource) {
-            File file = new File(ClientEmojiHandler.FONTS_DIR, source.getId());
+            File file = new File(ClientEmojiHandler.getFontsDir(), source.getId());
             if (file.isFile()) {
                 if (source.preserveTextLineMetrics()) {
                     loadTextFontPreview(source, file, preview);
@@ -740,7 +740,7 @@ public class FontSelectionScreen extends GuiScreen implements DropListener {
         }
 
         // Custom font from file
-        File file = new File(ClientEmojiHandler.FONTS_DIR, source.getId());
+        File file = new File(ClientEmojiHandler.getFontsDir(), source.getId());
         if (file.isFile()) {
             loadFontPreview(source.getId(), file, preview);
         } else {
@@ -898,7 +898,7 @@ public class FontSelectionScreen extends GuiScreen implements DropListener {
 
     private void addFontFromPicker() {
         FileUtil.FilePickerResult result = FileUtil
-            .pickFile("Select font file", ClientEmojiHandler.FONTS_DIR, SUPPORTED_EXTENSIONS);
+            .pickFile("Select font file", ClientEmojiHandler.getFontsDir(), SUPPORTED_EXTENSIONS);
 
         switch (result.getStatus()) {
             case CANCELLED:
@@ -917,7 +917,7 @@ public class FontSelectionScreen extends GuiScreen implements DropListener {
 
     private FontImportReport importFontFiles(List<File> sources) {
         FontImportReport report = new FontImportReport();
-        FileUtil.createFolderIfNotExists(ClientEmojiHandler.FONTS_DIR);
+        FileUtil.createFolderIfNotExists(ClientEmojiHandler.getFontsDir());
 
         for (File source : sources) {
             if (source == null) continue;
@@ -968,7 +968,8 @@ public class FontSelectionScreen extends GuiScreen implements DropListener {
     }
 
     private File prepareTargetFile(File source) throws IOException {
-        File fontsDir = ClientEmojiHandler.FONTS_DIR.getCanonicalFile();
+        File fontsDir = ClientEmojiHandler.getFontsDir()
+            .getCanonicalFile();
         File canonicalSource = source.getCanonicalFile();
         if (canonicalSource.getParentFile() != null && canonicalSource.getParentFile()
             .equals(fontsDir)) {
@@ -1883,7 +1884,7 @@ public class FontSelectionScreen extends GuiScreen implements DropListener {
             }
             try {
                 if (entry.source instanceof CustomFontSource) {
-                    File file = new File(ClientEmojiHandler.FONTS_DIR, fontId);
+                    File file = new File(ClientEmojiHandler.getFontsDir(), fontId);
                     if (!file.isFile()) return null;
                     return Font.createFont(Font.TRUETYPE_FONT, file);
                 }

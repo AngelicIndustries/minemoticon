@@ -41,7 +41,10 @@ public class EmoteClientHandler {
         }
     }
 
-    private static final File CACHE_DIR = new File("config/minemoticon/emote_cache");
+    private static File getCacheDir() {
+        return new File(Minemoticon.configDir(), "emote_cache");
+    }
+
     private static final int MAX_ACTIVE_DOWNLOADS = 2;
     private static final long DOWNLOAD_TIMEOUT_MS = 15000L;
     private static final int MAX_TRANSFER_CACHE_ENTRIES = 16;
@@ -546,11 +549,11 @@ public class EmoteClientHandler {
     }
 
     private static void deleteRemoteCacheFiles() {
-        if (!CACHE_DIR.exists()) {
+        if (!getCacheDir().exists()) {
             return;
         }
 
-        File[] files = CACHE_DIR.listFiles();
+        File[] files = getCacheDir().listFiles();
         if (files == null) {
             return;
         }
@@ -630,10 +633,10 @@ public class EmoteClientHandler {
             return;
         }
 
-        CACHE_DIR.mkdirs();
+        getCacheDir().mkdirs();
         try {
             String extension = EmojiImageLoader.fileExtensionForPayload(raw);
-            File cacheFile = new File(CACHE_DIR, checksum + extension);
+            File cacheFile = new File(getCacheDir(), checksum + extension);
             Files.write(cacheFile.toPath(), raw);
             finishDownload(pending.checksum);
             List<PendingAlias> aliases = pendingAliases.remove(pending.checksum);
@@ -663,7 +666,7 @@ public class EmoteClientHandler {
         if (!EmoteTransferLimits.isValidChecksum(checksum)) {
             return null;
         }
-        return EmojiImageLoader.findCachedFile(CACHE_DIR, checksum);
+        return EmojiImageLoader.findCachedFile(getCacheDir(), checksum);
     }
 
     public static void queueDownloadRequest(String checksum) {

@@ -273,10 +273,12 @@ public class ClientEmojiHandler {
         RESOURCE_EMOJIS.clear();
     }
 
-    public static final File FONTS_DIR = new File("config/minemoticon/fonts");
+    public static File getFontsDir() {
+        return new File(Minemoticon.configDir(), "fonts");
+    }
 
     private static void loadFontStack() {
-        FONTS_DIR.mkdirs();
+        getFontsDir().mkdirs();
 
         // Build all available font sources
         var sources = new ArrayList<FontSource>();
@@ -298,7 +300,7 @@ public class ClientEmojiHandler {
         }
 
         // Custom fonts from fonts directory
-        File[] fontFiles = FONTS_DIR.listFiles(f -> f.isFile() && isSupportedFontFile(f.getName()));
+        File[] fontFiles = getFontsDir().listFiles(f -> f.isFile() && isSupportedFontFile(f.getName()));
         if (fontFiles != null) {
             java.util.Arrays.sort(
                 fontFiles,
@@ -346,15 +348,19 @@ public class ClientEmojiHandler {
     }
 
     private static final String EMOJI_JSON_URL = "https://raw.githubusercontent.com/iamcal/emoji-data/master/emoji.json";
-    private static final File EMOJI_CACHE_FILE = new File("config/minemoticon/emoji_data.json");
+
+    private static File getEmojiCacheFile() {
+        return new File(Minemoticon.configDir(), "emoji_data.json");
+    }
+
     private static final String BUNDLED_RESOURCE = "/assets/minemoticon/emoji_data.json";
 
     // Load emoji JSON from cache or bundled resource (no network)
     private static String loadLocalEmojiJson() {
         // Try disk cache first
-        if (EMOJI_CACHE_FILE.isFile()) {
+        if (getEmojiCacheFile().isFile()) {
             try {
-                var data = new String(Files.readAllBytes(EMOJI_CACHE_FILE.toPath()), StandardCharsets.UTF_8);
+                var data = new String(Files.readAllBytes(getEmojiCacheFile().toPath()), StandardCharsets.UTF_8);
                 Minemoticon.debug("Loaded emoji data from cache ({} bytes)", data.length());
                 return data;
             } catch (IOException e) {
@@ -386,8 +392,8 @@ public class ClientEmojiHandler {
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(10000);
 
-            if (EMOJI_CACHE_FILE.isFile()) {
-                conn.setIfModifiedSince(EMOJI_CACHE_FILE.lastModified());
+            if (getEmojiCacheFile().isFile()) {
+                conn.setIfModifiedSince(getEmojiCacheFile().lastModified());
             }
 
             conn.connect();
@@ -403,9 +409,9 @@ public class ClientEmojiHandler {
                     scanner.useDelimiter("\\A");
                     String fresh = scanner.hasNext() ? scanner.next() : "";
                     if (!fresh.isEmpty()) {
-                        EMOJI_CACHE_FILE.getParentFile()
+                        getEmojiCacheFile().getParentFile()
                             .mkdirs();
-                        Files.write(EMOJI_CACHE_FILE.toPath(), fresh.getBytes(StandardCharsets.UTF_8));
+                        Files.write(getEmojiCacheFile().toPath(), fresh.getBytes(StandardCharsets.UTF_8));
                         Minemoticon.debug("Downloaded updated emoji data ({} bytes)", fresh.length());
                         return fresh;
                     }
@@ -452,6 +458,7 @@ public class ClientEmojiHandler {
                     fontStack.getEmojiFont(),
                     fontStack.getEmojiFallbackFont(),
                     fontStack.getEmojiFontHash(),
+                    fontStack.getEmojiFallbackFontHash(),
                     glyphEntries);
             }
 

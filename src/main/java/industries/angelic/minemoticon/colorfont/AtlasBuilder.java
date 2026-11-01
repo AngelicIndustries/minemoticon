@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.List;
@@ -21,7 +22,6 @@ import industries.angelic.minemoticon.api.DownloadedTexture;
 
 public class AtlasBuilder {
 
-    private static final File CACHE_DIR = new File("config/minemoticon/cache");
     private static final String ATLAS_RENDER_VERSION = "v5";
     private static final int CELL_SIZE = 128;
     private static final int RENDER_SIZE = 256; // 2x supersample
@@ -38,11 +38,21 @@ public class AtlasBuilder {
         }
     }
 
+    // Resolved lazily: sha1() is also used where FML isn't set up
+    private static File getCacheDir() {
+        return new File(Minemoticon.configDir(), "cache");
+    }
+
     // Delete atlas cache files that don't match the current font hash
     public static void cleanStaleCaches(String currentFontHash) {
-        CACHE_DIR.mkdirs();
-        String currentPrefix = "atlas_" + currentFontHash + "_";
-        File[] files = CACHE_DIR.listFiles((d, name) -> name.startsWith("atlas_") && !name.startsWith(currentPrefix));
+        deleteCachesExcept(currentFontHash + "_");
+    }
+
+    private static void deleteCachesExcept(String keptKeyPrefix) {
+        File dir = getCacheDir();
+        dir.mkdirs();
+        String keptPrefix = "atlas_" + keptKeyPrefix;
+        File[] files = dir.listFiles((d, name) -> name.startsWith("atlas_") && !name.startsWith(keptPrefix));
         if (files != null) {
             for (File f : files) {
                 if (f.delete()) {
@@ -54,13 +64,25 @@ public class AtlasBuilder {
 
     // Try loading cached atlas, or start building in background. Returns the atlas immediately.
     public static EmojiAtlas loadOrBuild(ColorFont primaryFont, ColorFont fallbackFont, String fontHash,
-        List<GlyphEntry> glyphs) {
+        String fallbackFontHash, List<GlyphEntry> glyphs) {
         var atlas = new EmojiAtlas();
-        CACHE_DIR.mkdirs();
 
-        String atlasKey = fontHash + "_" + ATLAS_RENDER_VERSION;
-        File pngFile = new File(CACHE_DIR, "atlas_" + atlasKey + ".png");
-        File jsonFile = new File(CACHE_DIR, "atlas_" + atlasKey + ".json");
+        // The glyph list follows emoji_data.json (updated from the network) and decides cell placement
+        var content = new StringBuilder(ATLAS_RENDER_VERSION).append('|')
+            .append(fallbackFontHash)
+            .append('|');
+        for (GlyphEntry glyph : glyphs) {
+            content.append(glyph.unified)
+                .append(',');
+        }
+        String atlasKey = fontHash + "_"
+            + sha1(
+                content.toString()
+                    .getBytes(StandardCharsets.UTF_8)).substring(0, 16);
+        deleteCachesExcept(atlasKey + ".");
+
+        File pngFile = new File(getCacheDir(), "atlas_" + atlasKey + ".png");
+        File jsonFile = new File(getCacheDir(), "atlas_" + atlasKey + ".json");
 
         if (pngFile.isFile() && jsonFile.isFile()) {
             DownloadedTexture.submitToPool(() -> loadFromCache(atlas, pngFile, jsonFile));
