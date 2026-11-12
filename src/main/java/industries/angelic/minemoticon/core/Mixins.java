@@ -45,6 +45,11 @@ public class Mixins extends AngelMixins {
             .side(MiscUtil.Side.CLIENT)
             .build();
 
+        registry.mixin("MixinGuiScreenBook")
+            .phase(MixinUtil.Phase.EARLY)
+            .side(MiscUtil.Side.CLIENT)
+            .build();
+
         registry.mixin("MixinGuiRepair")
             .phase(MixinUtil.Phase.EARLY)
             .side(MiscUtil.Side.CLIENT)
