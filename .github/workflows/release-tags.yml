@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   release:
-    uses: AngelicIndustries/67minecraft-gradle-publish/.github/workflows/gtnh-release-with-67minecraft.yml@1.0.4
+    uses: AngelicIndustries/67minecraft-gradle-publish/.github/workflows/gtnh-release-with-67minecraft.yml@v1
     with:
       # Auto-detection skips the slim jar, which Modrinth and CurseForge also get
       additional-files: |
